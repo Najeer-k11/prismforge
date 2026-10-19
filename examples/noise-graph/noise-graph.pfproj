@@ -1,0 +1,22 @@
+{
+    "formatVersion": 3,
+    "name": "noise-graph",
+    "graph": {
+        "enabled": true,
+        "file": "noise-graph.pfgraph"
+    },
+    "parameters": {},
+    "preview": {
+        "autoCompile": true,
+        "camera": {
+            "distance": 3.5,
+            "pitch": 20,
+            "yaw": 30
+        },
+        "mesh": "sphere"
+    },
+    "shaders": {
+        "fragment": "shaders/noise-graph.frag",
+        "vertex": "shaders/noise-graph.vert"
+    }
+}

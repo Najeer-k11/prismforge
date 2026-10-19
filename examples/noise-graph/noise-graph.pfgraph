@@ -1,0 +1,183 @@
+{
+    "formatVersion": 1,
+    "name": "Noise graph",
+    "nextId": 11,
+    "nodes": [
+        {
+            "id": 1,
+            "type": "output.surface",
+            "x": 560,
+            "y": 0
+        },
+        {
+            "id": 2,
+            "type": "noise.fbm3d",
+            "x": -240,
+            "y": -40,
+            "values": {
+                "scale": [
+                    3,
+                    0,
+                    0,
+                    0
+                ]
+            }
+        },
+        {
+            "id": 3,
+            "type": "param.color",
+            "x": -240,
+            "y": 120,
+            "parameterName": "uDeepColor",
+            "values": {
+                "default": [
+                    0.04,
+                    0.1,
+                    0.22,
+                    1
+                ]
+            }
+        },
+        {
+            "id": 4,
+            "type": "param.color",
+            "x": -240,
+            "y": 220,
+            "parameterName": "uHighlightColor",
+            "values": {
+                "default": [
+                    0.9,
+                    0.75,
+                    0.45,
+                    1
+                ]
+            }
+        },
+        {
+            "id": 5,
+            "type": "math.smoothstep",
+            "x": 0,
+            "y": -40,
+            "values": {
+                "e0": [
+                    0.4,
+                    0,
+                    0,
+                    0
+                ],
+                "e1": [
+                    0.6,
+                    0,
+                    0,
+                    0
+                ]
+            }
+        },
+        {
+            "id": 6,
+            "type": "math.lerp",
+            "x": 260,
+            "y": 40
+        },
+        {
+            "id": 7,
+            "type": "param.float",
+            "x": 260,
+            "y": 200,
+            "parameterName": "uRoughness",
+            "rangeMin": 0,
+            "rangeMax": 1,
+            "values": {
+                "default": [
+                    0.35,
+                    0,
+                    0,
+                    0
+                ]
+            }
+        },
+        {
+            "id": 8,
+            "type": "material.fresnel",
+            "x": 0,
+            "y": 340
+        },
+        {
+            "id": 9,
+            "type": "math.multiply",
+            "x": 260,
+            "y": 340
+        },
+        {
+            "id": 10,
+            "type": "param.color",
+            "x": 0,
+            "y": 460,
+            "parameterName": "uRimColor",
+            "values": {
+                "default": [
+                    0.3,
+                    0.55,
+                    1.0,
+                    1
+                ]
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": 6,
+            "fromPort": "out",
+            "to": 1,
+            "toPort": "baseColor"
+        },
+        {
+            "from": 9,
+            "fromPort": "out",
+            "to": 1,
+            "toPort": "emission"
+        },
+        {
+            "from": 7,
+            "fromPort": "value",
+            "to": 1,
+            "toPort": "roughness"
+        },
+        {
+            "from": 2,
+            "fromPort": "out",
+            "to": 5,
+            "toPort": "x"
+        },
+        {
+            "from": 3,
+            "fromPort": "value",
+            "to": 6,
+            "toPort": "a"
+        },
+        {
+            "from": 4,
+            "fromPort": "value",
+            "to": 6,
+            "toPort": "b"
+        },
+        {
+            "from": 5,
+            "fromPort": "out",
+            "to": 6,
+            "toPort": "t"
+        },
+        {
+            "from": 8,
+            "fromPort": "out",
+            "to": 9,
+            "toPort": "a"
+        },
+        {
+            "from": 10,
+            "fromPort": "value",
+            "to": 9,
+            "toPort": "b"
+        }
+    ]
+}

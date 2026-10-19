@@ -1,0 +1,31 @@
+{
+    "formatVersion": 3,
+    "graph": {
+        "enabled": false,
+        "file": ""
+    },
+    "name": "lit-material",
+    "parameters": {
+        "uColorA": {
+            "type": "vec3",
+            "value": [0.12, 0.35, 0.3]
+        },
+        "uGridCells": {
+            "type": "float",
+            "value": [12]
+        }
+    },
+    "preview": {
+        "autoCompile": true,
+        "camera": {
+            "distance": 3.5,
+            "pitch": 20,
+            "yaw": 30
+        },
+        "mesh": "sphere"
+    },
+    "shaders": {
+        "fragment": "material.frag",
+        "vertex": "material.vert"
+    }
+}

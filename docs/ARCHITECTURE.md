@@ -1,23 +1,27 @@
-# PrismForge Architecture (Milestone 1)
+# PrismForge Architecture
 
 ## Modules
 
 ```
 src/
-  diagnostics/   Diagnostic model, compiler-log parsers, logging categories     ┐
-  shader/        ShaderStage/ShaderSources, glslang front-end validation        ├─ pf_core   (Qt Core, glslang)
-  project/       Project model and JSON serialisation (*.pfproj)                ┘
-  render/        Renderer interface, preview meshes, orbit camera               ┐  pf_render (Qt Gui/OpenGL)
-  render/gl/     OpenGL 4.5 core backend (GLRenderer)                           ┘
-  editor/        CodeEditor (gutter, diagnostic marks), GLSL highlighter           pf_editor (Qt Widgets)
-  app/           MainWindow, ViewportWidget, DiagnosticsPanel, theme, main()       prismforge executable
+  diagnostics/   Diagnostic model, compiler-log parsers, log capture, categories   ┐
+  shader/        ShaderStage/ShaderSources, glslang front-end validation          │
+  material/      Material parameters, comment hints, JSON values                  ├─ pf_core (Qt Core, glslang)
+  project/       Project model + JSON (*.pfproj), material exporter               ┘
+  graph/         Graph model, JSON node library, validation, GLSL codegen            pf_graph (Qt Core)
+  render/        Renderer interface, preview meshes, orbit camera                 ┐  pf_render (Qt Gui/OpenGL)
+  render/gl/     OpenGL 4.5 core backend (GLRenderer)                             ┘
+  editor/        CodeEditor (gutter, diagnostic marks), GLSL highlighter             pf_editor (Qt Widgets)
+  grapheditor/   Node canvas, items, properties panel, undo                          pf_grapheditor (Qt Widgets)
+  app/           MainWindow, viewport, panels (diagnostics, material, log), main()   prismforge executable
+packaging/       Install rules, CPack RPM/DEB, desktop file, AppStream, MIME
+resources/       Default shaders, built-in node library, icons
 ```
 
-Dependencies only point downwards: `app → editor, render → core`. Nothing in
-`pf_core` knows about GPUs or widgets, so it is unit-tested without a display.
-Only `render/gl/` includes OpenGL headers; `ViewportWidget` is the single place
-that creates the GL backend. A Vulkan backend would be another `Renderer`
-implementation plus a different viewport surface.
+Dependencies only point downwards: `app → grapheditor, editor, render →
+graph → core`. Nothing in `pf_core` or `pf_graph` knows about GPUs or widgets,
+so both are unit-tested without a display. Only `render/gl/` includes OpenGL
+headers; `ViewportWidget` is the single place that creates the GL backend.
 
 ## Compile pipeline
 
@@ -79,17 +83,50 @@ glslang validation runs on the Qt global thread pool. Driver compilation of
 large shaders can still block the UI briefly; moving it to a shared context on a
 worker thread is a possible later step if it turns out to matter.
 
-## Project format
+## Material parameters
 
-`*.pfproj` is indented JSON with sorted keys (deterministic, diff-friendly).
-Shader sources live in separate files referenced by paths relative to the
-project file. `formatVersion` is checked; newer versions are rejected with a
-clear message instead of being half-loaded.
+After a successful link the backend enumerates active uniforms
+(`GL_PROGRAM_INTERFACE` queries) and reads their initial values, so GLSL
+initialisers (`uniform float x = 0.5;`) become defaults. Built-in uniforms are
+excluded; unsupported types are reported as info diagnostics. Editor hints come
+from a trailing comment on the declaration: `@range(min, max)`, `@color`,
+`@label(Text)`. User values are kept by name across recompiles and applied
+only when the type still matches.
+
+## Shader graph
+
+* **Node definitions** are data (`resources/nodes/builtin.json`, user and
+  project libraries). Each has typed inputs/outputs and GLSL *expression
+  templates* with `{input}`, `{T}` and `{name}` placeholders, plus optional
+  helper functions emitted once. Roles: `function`, `parameter` (becomes a
+  hinted uniform), `output` (writes `fragColor`).
+* **Types**: `float`, `vec2`, `vec3`, `vec4`, and generic `T`, resolved per node
+  to the widest connected `T` input. Implicit conversions: splat
+  (`float → vecN`), truncate (`.xy`), pad (`vec4(x, 1.0)`). `vecN → float` is an
+  error that suggests a Split node.
+* **Validation**: unknown types, invalid connections, exactly one output node,
+  cycles, type mismatches, parameter name rules; unreachable nodes warn and are
+  not emitted.
+* **Determinism**: nodes are emitted in topological order with the smallest
+  node id first; helpers in definition-id order; connections are stored sorted.
+  The same graph always yields byte-identical GLSL.
+* **Editing**: the graph editor never mutates the model directly; each edit
+  replaces it with a modified copy and records a snapshot undo entry
+  (consecutive edits of one value merge).
+
+## File formats
+
+All files are indented JSON with sorted keys; floats are written as the
+shortest decimal that round-trips, so diffs stay small.
+
+`*.pfproj` (format 3; versions 1-2 still load):
 
 ```json
 {
-    "formatVersion": 1,
+    "formatVersion": 3,
+    "graph": { "enabled": true, "file": "Demo.pfgraph" },
     "name": "Demo",
+    "parameters": { "uTint": { "type": "vec3", "value": [1, 0.5, 0.25] } },
     "preview": {
         "autoCompile": true,
         "camera": { "distance": 3.5, "pitch": 20, "yaw": 30 },
@@ -98,3 +135,9 @@ clear message instead of being half-loaded.
     "shaders": { "fragment": "shaders/Demo.frag", "vertex": "shaders/Demo.vert" }
 }
 ```
+
+`*.pfgraph`: nodes (`id`, `type`, position, input `values`, parameter name and
+range) and connections (`from`/`fromPort` → `to`/`toPort`).
+
+`*.material.json` (export): shader file names, vertex attribute and built-in
+uniform interface, and every parameter with type, value, default and hints.

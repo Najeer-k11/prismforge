@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@PRISMFORGE_APP_ID@</id>
+  <name>PrismForge</name>
+  <summary>Write, preview and build GPU shaders</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="io.github.najeer_k11">
+    <name>Najeer-k11</name>
+  </developer>
+  <description>
+    <p>
+      PrismForge is a native shader development environment for graphics
+      programmers, rendering engineers and technical artists.
+    </p>
+    <ul>
+      <li>GLSL editor with diagnostics mapped to source lines</li>
+      <li>Real-time GPU preview on a sphere, plane or cube</li>
+      <li>Editable material parameters driven by uniform annotations</li>
+      <li>Visual shader graph with deterministic GLSL generation</li>
+      <li>GPU timing, capability information and an application log</li>
+      <li>Export of shaders, material descriptions and preview images</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">@PRISMFORGE_APP_ID@.desktop</launchable>
+  <provides>
+    <binary>prismforge</binary>
+    <mediatype>application/x-prismforge-project</mediatype>
+  </provides>
+  <categories>
+    <category>Development</category>
+    <category>Graphics</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@PROJECT_VERSION@" date="2026-10-19">
+      <description>
+        <p>Material parameters, diagnostics panels, visual shader graph, export and packaging.</p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-10-19">
+      <description>
+        <p>First working shader workbench.</p>
+      </description>
+    </release>
+  </releases>
+</component>

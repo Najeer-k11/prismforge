@@ -15,6 +15,9 @@
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdio>
+#include <optional>
+
 #include <memory>
 
 using namespace pf;
@@ -74,6 +77,26 @@ struct GlFixture {
 
 GlFixture* g_gl = nullptr;
 
+// Created on first use, so listing tests needs no GL (CMake runs the binary
+// at build time to discover them) and headless machines just skip.
+// Owned here (not a function static) so main() can destroy it while the
+// QGuiApplication still exists.
+std::unique_ptr<GlFixture> g_fixture;
+bool g_fixtureAttempted = false;
+
+GlFixture* glFixture()
+{
+    if (!g_fixtureAttempted) {
+        g_fixtureAttempted = true;
+        auto f = std::make_unique<GlFixture>();
+        if (f->create())
+            g_fixture = std::move(f);
+        else
+            std::fprintf(stderr, "No OpenGL 4.5 core context: %s\n", qPrintable(f->error));
+    }
+    return g_fixture.get();
+}
+
 QImage renderOnce(Renderer& renderer, PreviewMesh mesh = PreviewMesh::Sphere)
 {
     renderer.setMesh(makeMesh(mesh));
@@ -93,13 +116,23 @@ QRgb centre(const QImage& img) { return img.pixel(img.width() / 2, img.height() 
 QRgb corner(const QImage& img) { return img.pixel(1, 1); }
 
 struct RendererScope {
-    gl::GLRenderer renderer{g_gl->context.get()};
+    std::optional<gl::GLRenderer> holder;
+
     RendererScope()
     {
+        g_gl = glFixture();
+        if (!g_gl)
+            SKIP("no OpenGL 4.5 core context available");
+        holder.emplace(g_gl->context.get());
         QString error;
-        REQUIRE(renderer.initialize(&error));
+        REQUIRE(holder->initialize(&error));
     }
-    ~RendererScope() { renderer.shutdown(); }
+    ~RendererScope()
+    {
+        if (holder)
+            holder->shutdown();
+    }
+    gl::GLRenderer& renderer() { return *holder; }
 };
 
 } // namespace
@@ -107,7 +140,7 @@ struct RendererScope {
 TEST_CASE("Renderer reports device information", "[gl]")
 {
     RendererScope s;
-    const RendererInfo info = s.renderer.info();
+    const RendererInfo info = s.renderer().info();
     CHECK(info.api == "OpenGL");
     CHECK_FALSE(info.version.isEmpty());
     CHECK_FALSE(info.device.isEmpty());
@@ -117,24 +150,24 @@ TEST_CASE("Renderer reports device information", "[gl]")
 TEST_CASE("Default shaders compile, link and draw", "[gl]")
 {
     RendererScope s;
-    const auto result = s.renderer.buildProgram({readShader("default.vert"), readShader("default.frag")});
+    const auto result = s.renderer().buildProgram({readShader("default.vert"), readShader("default.frag")});
     for (const Diagnostic& d : result.diagnostics)
         UNSCOPED_INFO(d.message.toStdString());
     REQUIRE(result.success);
-    REQUIRE(s.renderer.hasProgram());
+    REQUIRE(s.renderer().hasProgram());
 
-    const QImage img = renderOnce(s.renderer);
+    const QImage img = renderOnce(s.renderer());
     CHECK(centre(img) != corner(img)); // the sphere covers the centre, not the corner
-    CHECK(s.renderer.lastFrameStats().drawCalls == 1);
-    CHECK(s.renderer.lastFrameStats().triangles == makeSphere().triangleCount());
+    CHECK(s.renderer().lastFrameStats().drawCalls == 1);
+    CHECK(s.renderer().lastFrameStats().triangles == makeSphere().triangleCount());
 }
 
 TEST_CASE("A solid colour shader produces that colour", "[gl]")
 {
     RendererScope s;
-    REQUIRE(s.renderer.buildProgram({kSolidVertex, solidFragment("1.0, 0.0, 0.0")}).success);
+    REQUIRE(s.renderer().buildProgram({kSolidVertex, solidFragment("1.0, 0.0, 0.0")}).success);
     for (PreviewMesh mesh : {PreviewMesh::Sphere, PreviewMesh::Cube}) {
-        const QImage img = renderOnce(s.renderer, mesh);
+        const QImage img = renderOnce(s.renderer(), mesh);
         CHECK(centre(img) == qRgb(255, 0, 0));
         CHECK(corner(img) != qRgb(255, 0, 0));
     }
@@ -143,11 +176,11 @@ TEST_CASE("A solid colour shader produces that colour", "[gl]")
 TEST_CASE("A failed compile keeps the previous program active", "[gl]")
 {
     RendererScope s;
-    REQUIRE(s.renderer.buildProgram({kSolidVertex, solidFragment("0.0, 1.0, 0.0")}).success);
-    REQUIRE(centre(renderOnce(s.renderer)) == qRgb(0, 255, 0));
+    REQUIRE(s.renderer().buildProgram({kSolidVertex, solidFragment("0.0, 1.0, 0.0")}).success);
+    REQUIRE(centre(renderOnce(s.renderer())) == qRgb(0, 255, 0));
 
     const QString broken = "#version 450 core\nout vec4 c;\nvoid main() {\n  c = vec4(nope);\n}\n";
-    const auto result = s.renderer.buildProgram({kSolidVertex, broken});
+    const auto result = s.renderer().buildProgram({kSolidVertex, broken});
     CHECK_FALSE(result.success);
     REQUIRE(hasErrors(result.diagnostics));
 
@@ -159,22 +192,22 @@ TEST_CASE("A failed compile keeps the previous program active", "[gl]")
     }
     CHECK(foundLine); // driver-specific format, parsed to a source line
 
-    CHECK(s.renderer.hasProgram());
-    CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 255, 0)); // still the green program
+    CHECK(s.renderer().hasProgram());
+    CHECK(centre(renderOnce(s.renderer())) == qRgb(0, 255, 0)); // still the green program
 }
 
 TEST_CASE("A link failure keeps the previous program active", "[gl]")
 {
     RendererScope s;
-    REQUIRE(s.renderer.buildProgram({kSolidVertex, solidFragment("0.0, 0.0, 1.0")}).success);
+    REQUIRE(s.renderer().buildProgram({kSolidVertex, solidFragment("0.0, 0.0, 1.0")}).success);
 
     // Fragment input with no matching vertex output fails at link time.
     const QString fragment = "#version 450 core\nin vec3 vMissing;\nout vec4 c;\n"
                              "void main() { c = vec4(vMissing, 1.0); }\n";
-    const auto result = s.renderer.buildProgram({kSolidVertex, fragment});
+    const auto result = s.renderer().buildProgram({kSolidVertex, fragment});
     CHECK_FALSE(result.success);
     CHECK(hasErrors(result.diagnostics));
-    CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 0, 255));
+    CHECK(centre(renderOnce(s.renderer())) == qRgb(0, 0, 255));
 }
 
 TEST_CASE("Editable uniforms are introspected with their initial values", "[gl]")
@@ -188,7 +221,7 @@ TEST_CASE("Editable uniforms are introspected with their initial values", "[gl]"
                              "uniform float uTime;\n"
                              "void main() { c = vec4(uTint * uGain * (uFlip ? 1.0 : 0.5), 1.0) "
                              "+ uUnsupported[0] * 1e-6 + uTime * 0.0; }\n";
-    const auto result = s.renderer.buildProgram({kSolidVertex, fragment});
+    const auto result = s.renderer().buildProgram({kSolidVertex, fragment});
     REQUIRE(result.success);
 
     QHash<QString, MaterialParameter> byName;
@@ -214,16 +247,16 @@ TEST_CASE("Setting a parameter changes the rendered output", "[gl]")
     const QString fragment = "#version 450 core\nout vec4 c;\n"
                              "uniform vec3 uTint = vec3(1.0, 0.0, 0.0);\n"
                              "void main() { c = vec4(uTint, 1.0); }\n";
-    REQUIRE(s.renderer.buildProgram({kSolidVertex, fragment}).success);
-    CHECK(centre(renderOnce(s.renderer)) == qRgb(255, 0, 0));
+    REQUIRE(s.renderer().buildProgram({kSolidVertex, fragment}).success);
+    CHECK(centre(renderOnce(s.renderer())) == qRgb(255, 0, 0));
 
-    s.renderer.setParameter("uTint", ParamType::Vec3, {0.0f, 0.0f, 1.0f, 0.0f});
-    CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 0, 255));
+    s.renderer().setParameter("uTint", ParamType::Vec3, {0.0f, 0.0f, 1.0f, 0.0f});
+    CHECK(centre(renderOnce(s.renderer())) == qRgb(0, 0, 255));
 
     // Wrong type or unknown name: ignored, no GL error, colour unchanged.
-    s.renderer.setParameter("uTint", ParamType::Float, {1.0f, 1.0f, 1.0f, 1.0f});
-    s.renderer.setParameter("uMissing", ParamType::Vec3, {1.0f, 1.0f, 1.0f, 1.0f});
-    CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 0, 255));
+    s.renderer().setParameter("uTint", ParamType::Float, {1.0f, 1.0f, 1.0f, 1.0f});
+    s.renderer().setParameter("uMissing", ParamType::Vec3, {1.0f, 1.0f, 1.0f, 1.0f});
+    CHECK(centre(renderOnce(s.renderer())) == qRgb(0, 0, 255));
 }
 
 TEST_CASE("The default shader graph links and draws on the GPU", "[gl][graph]")
@@ -231,7 +264,7 @@ TEST_CASE("The default shader graph links and draws on the GPU", "[gl][graph]")
     RendererScope s;
     const auto generated = graph::generateFragmentShader(graph::makeDefaultGraph(), graph::NodeRegistry::builtin());
     REQUIRE(generated.success);
-    const auto result = s.renderer.buildProgram({readShader("default.vert"), generated.source});
+    const auto result = s.renderer().buildProgram({readShader("default.vert"), generated.source});
     for (const Diagnostic& d : result.diagnostics)
         UNSCOPED_INFO(d.message.toStdString());
     REQUIRE(result.success);
@@ -241,30 +274,31 @@ TEST_CASE("The default shader graph links and draws on the GPU", "[gl][graph]")
         names << p.name;
     CHECK(names == QStringList{"uDeepColor", "uHighlightColor", "uRoughness"});
 
-    const QImage img = renderOnce(s.renderer);
+    const QImage img = renderOnce(s.renderer());
     CHECK(centre(img) != corner(img));
 }
 
 TEST_CASE("Nothing is drawn before any program is built", "[gl]")
 {
     RendererScope s;
-    CHECK_FALSE(s.renderer.hasProgram());
-    const QImage img = renderOnce(s.renderer);
+    CHECK_FALSE(s.renderer().hasProgram());
+    const QImage img = renderOnce(s.renderer());
     CHECK(centre(img) == corner(img));
-    CHECK(s.renderer.lastFrameStats().drawCalls == 0);
+    CHECK(s.renderer().lastFrameStats().drawCalls == 0);
 }
 
 int main(int argc, char* argv[])
 {
+    // Without a display server, use the offscreen platform; GL may then be
+    // unavailable and the GPU tests are skipped (Catch2 exits with 4).
+    if (qEnvironmentVariableIsEmpty("DISPLAY") && qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"))
+        qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
-    GlFixture fixture;
-    if (!fixture.create()) {
-        std::fprintf(stderr, "SKIP: no OpenGL 4.5 core context (%s)\n", qPrintable(fixture.error));
-        return 4; // matches SKIP_RETURN_CODE in tests/CMakeLists.txt
-    }
-    g_gl = &fixture;
     const int result = Catch::Session().run(argc, argv);
-    fixture.fbo.reset();
-    fixture.context->doneCurrent();
+    if (g_fixture) {
+        g_fixture->fbo.reset(); // needs the context current
+        g_fixture->context->doneCurrent();
+        g_fixture.reset();
+    }
     return result;
 }

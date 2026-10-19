@@ -104,8 +104,16 @@ qt_add_resources(prismforge "builtin_shaders"
     FILES
         "${PROJECT_SOURCE_DIR}/resources/shaders/default.vert"
         "${PROJECT_SOURCE_DIR}/resources/shaders/default.frag"
+        "${PROJECT_SOURCE_DIR}/resources/icons/prismforge-16.png"
+        "${PROJECT_SOURCE_DIR}/resources/icons/prismforge-32.png"
+        "${PROJECT_SOURCE_DIR}/resources/icons/prismforge-48.png"
+        "${PROJECT_SOURCE_DIR}/resources/icons/prismforge-64.png"
+        "${PROJECT_SOURCE_DIR}/resources/icons/prismforge-128.png"
+        "${PROJECT_SOURCE_DIR}/resources/icons/prismforge-256.png"
 )
 target_link_libraries(prismforge PRIVATE
     pf_core pf_render pf_editor pf_graph pf_grapheditor
     Qt6::Widgets Qt6::OpenGLWidgets Qt6::Concurrent)
-target_compile_definitions(prismforge PRIVATE PRISMFORGE_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(prismforge PRIVATE
+    PRISMFORGE_VERSION="${PROJECT_VERSION}"
+    PRISMFORGE_APP_ID="${PRISMFORGE_APP_ID}")

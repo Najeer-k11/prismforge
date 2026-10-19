@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=PrismForge
+GenericName=Shader Development Environment
+Comment=Write, preview and build GPU shaders with code or a node graph
+Exec=prismforge %f
+Icon=@PRISMFORGE_APP_ID@
+Terminal=false
+Categories=Graphics;3DGraphics;
+Keywords=shader;GLSL;OpenGL;material;node;graph;GPU;
+MimeType=application/x-prismforge-project;
+StartupNotify=true
+StartupWMClass=prismforge

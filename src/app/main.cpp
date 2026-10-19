@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QFile>
+#include <QIcon>
 #include <QSurfaceFormat>
 #include <QTimer>
 
@@ -36,6 +37,13 @@ int main(int argc, char* argv[])
     QApplication::setOrganizationName(QStringLiteral("PrismForge"));
     QApplication::setApplicationName(QStringLiteral("PrismForge"));
     QApplication::setApplicationVersion(QStringLiteral(PRISMFORGE_VERSION));
+    // Matches the installed .desktop file, so Wayland compositors and task
+    // bars associate windows with the PrismForge launcher and icon.
+    QGuiApplication::setDesktopFileName(QStringLiteral(PRISMFORGE_APP_ID));
+    QIcon icon;
+    for (int size : {16, 32, 48, 64, 128, 256})
+        icon.addFile(QStringLiteral(":/icons/prismforge-%1.png").arg(size), QSize(size, size));
+    QApplication::setWindowIcon(icon);
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("GPU shader development environment"));

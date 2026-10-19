@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-prismforge-project">
+    <comment>PrismForge project</comment>
+    <sub-class-of type="application/json"/>
+    <glob pattern="*.pfproj"/>
+  </mime-type>
+  <mime-type type="application/x-prismforge-graph">
+    <comment>PrismForge shader graph</comment>
+    <sub-class-of type="application/json"/>
+    <glob pattern="*.pfgraph"/>
+  </mime-type>
+</mime-info>

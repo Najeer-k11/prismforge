@@ -1,106 +1,141 @@
 # PrismForge
 
-A native desktop environment for writing GLSL shaders and previewing them
-on the GPU in real time. C++20, Qt 6, OpenGL 4.5 core.
+A native desktop environment for writing GPU shaders, previewing them in real
+time, building them with a visual node graph and exporting reusable assets.
+C++20, Qt 6, OpenGL 4.5 core, GLSL.
 
-This is **Milestone 1: a working shader workbench**. See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module layout, compile
-pipeline and the shader interface (attributes and uniforms) your shaders can use.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for modules, the compile
+pipeline, the shader interface, the graph language and file formats.
 
-## Requirements
+## Features
 
-| Component | Tested version | Fedora package |
+| Area | What you get |
+|---|---|
+| **Shader editor** | GLSL vertex + fragment tabs, syntax highlighting, line gutter, inline error/warning marks, open/save/new shader files |
+| **Compile pipeline** | glslang validation on a worker thread, then GL driver compile/link; auto-compile 350 ms after typing or F5; **a failed build always keeps the last working preview** |
+| **Preview** | Sphere / plane / cube, orbit + zoom camera, continuous animation (`uTime`) |
+| **Material parameters** | Every editable uniform (`float`, `vec2-4`, `int`, `bool`) gets a control; hints in comments (`// @range(0, 1) @color @label(Name)`); values saved in the project |
+| **Shader graph** | Typed node graph with 67 built-in nodes (input, constant, parameter, math, vector, colour, UV, 2D/3D noise, fresnel, surface/unlit output), validation, deterministic GLSL generation, undo/redo, user node libraries in JSON |
+| **Diagnostics** | Errors with stage/line/column from glslang, Mesa, NVIDIA and AMD formats; CPU frame interval and submit time; **GPU time from timer queries, never substituted with CPU numbers**; GPU capability table; application log; `--gl-debug` driver messages |
+| **Projects** | `.pfproj` JSON with relative paths, sorted keys and compact numbers (diff-friendly); graphs in `.pfgraph` |
+| **Export** | Shaders, `*.material.json` (interface + parameters + hints), the source graph and a preview PNG |
+
+## Install a package
+
+| Distribution | Package | Install |
 |---|---|---|
-| C++20 compiler | GCC 16.2 | `gcc-c++` |
-| CMake ≥ 3.24 + Ninja | 4.3 / 1.13 | `cmake ninja-build` |
-| Qt 6 (Core, Gui, Widgets, OpenGL, OpenGLWidgets, Concurrent) | 6.11.2 | `qt6-qtbase-devel` |
-| glslang (optional, recommended) | 16.2.0 | `glslang glslang-devel` |
-| Catch2 v3 (tests only) | 3.13.0 | `catch-devel` |
-| OpenGL 4.5 core driver | Mesa 26.2.5 (Intel) | — |
+| Fedora 44 | `prismforge-0.2.0-1.fc44.x86_64.rpm` | `sudo dnf install ./prismforge-0.2.0-1.fc44.x86_64.rpm` |
+| Ubuntu 24.04 | `prismforge_0.2.0_amd64.deb` | `sudo apt install ./prismforge_0.2.0_amd64.deb` |
+
+Packages install the `prismforge` binary, a desktop launcher with the app
+icon, AppStream metadata, a `.pfproj` file association and example projects in
+`/usr/share/doc/prismforge/examples/`.
+
+Each package is built on the distribution it targets, because it links against
+that distribution's Qt and C++ runtime. The RPM needs Qt ≥ 6.11 (Fedora 44);
+the DEB is built against Ubuntu 24.04's Qt 6.4.
+
+## Build from source
+
+| Component | Fedora package | Ubuntu package |
+|---|---|---|
+| C++20 compiler, CMake ≥ 3.24, Ninja | `gcc-c++ cmake ninja-build` | `build-essential cmake ninja-build` |
+| Qt 6 base (Widgets, OpenGL, Concurrent, Test) | `qt6-qtbase-devel` | `qt6-base-dev` |
+| glslang (optional, recommended) | `glslang glslang-devel` | `glslang-dev glslang-tools spirv-tools` |
+| Catch2 v3 (tests) | `catch-devel` | `catch2` |
+| OpenGL 4.5 driver | Mesa ≥ 20 or vendor driver | same |
 
 ```sh
-sudo dnf install gcc-c++ cmake ninja-build qt6-qtbase-devel glslang glslang-devel catch-devel
-```
-
-Without glslang the build still works, and shaders are validated by the GL driver
-alone (CMake prints a warning). Use `-DPRISMFORGE_BUILD_TESTS=OFF` to skip Catch2.
-
-## Build, test, run
-
-```sh
-cmake --preset release            # or: debug
+cmake --preset release
 cmake --build --preset release
-ctest --preset release            # unit tests + GPU integration tests
+ctest --preset release
 ./build/release/src/prismforge [project.pfproj]
 ```
 
-The GPU tests (`-L gpu`) need an OpenGL 4.5 context. If none is available they
-exit with a skip code instead of failing.
+Packages:
+
+```sh
+cd build/release
+cpack -G RPM        # on Fedora
+cpack -G DEB        # on Debian/Ubuntu (needs dpkg-dev)
+```
+
+`cmake --install build/release --prefix ~/.local` installs without packaging.
 
 ### Command-line options
 
 | Option | Purpose |
 |---|---|
-| `project.pfproj` | Open a project on startup |
-| `--screenshot <file.png>` | Save a screenshot of the window, then quit |
-| `--screenshot-delay <ms>` | Delay before the screenshot (default 2000) |
-| `--smoke-replace-fragment <file>` | After the first successful compile, swap in this fragment shader and recompile. Used to check the "failed compile keeps the last working preview" behaviour from a script. |
+| `project.pfproj` | Open a project |
+| `--graph` | Start with the shader graph generating the fragment shader |
+| `--export <dir>` | Export after the first successful compile, then exit (0 = success) |
+| `--gl-debug` | OpenGL debug context; driver messages go to the Log panel |
+| `--screenshot <png>` / `--screenshot-delay <ms>` | Save a window screenshot and exit |
+| `--smoke-replace-fragment <file>` | After the first good compile, swap in this fragment shader (scripted testing) |
 
 ## Using it
 
 | Action | Shortcut |
 |---|---|
-| Compile | F5 |
-| Toggle auto-compile (350 ms after the last edit) | toolbar |
+| Compile / toggle shader graph mode | F5 / Ctrl+G |
 | Fragment / vertex tab | Ctrl+1 / Ctrl+2 |
-| Sphere / Plane / Cube | Alt+1 / Alt+2 / Alt+3 |
-| Orbit / zoom / reset camera | left- or middle-drag / wheel / Home |
-| New / Open / Save / Save As project | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
-| Open shader / Save shader | Ctrl+Shift+O / Ctrl+Alt+S |
+| Sphere / plane / cube | Alt+1 / Alt+2 / Alt+3 |
+| Orbit / zoom / reset camera | drag / wheel / Home |
+| New / open / save / save-as project | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
+| Export material | Ctrl+E |
+| Graph: add node / connect / disconnect | right-click canvas / drag between ports / drag an input away |
+| Graph: delete / duplicate / frame / undo / redo | Del / Ctrl+D / F / Ctrl+Z / Ctrl+Shift+Z |
 
-Double-click a diagnostic to jump to its line. Saving an untitled project writes
-the shader buffers to `shaders/<name>.vert|.frag` next to the `.pfproj` file.
+**Graph mode** generates the fragment shader from the graph. The hand-written
+fragment file is never modified or parsed into nodes: arbitrary GLSL cannot be
+represented as a graph, so the two are kept separate and you switch between
+them with Ctrl+G. Generated GLSL is shown read-only in the editor.
 
-## Status
+**Custom nodes**: put JSON files in `~/.local/share/prismforge/nodes/` (all
+projects) or `<project>/nodes/` (one project) and use *Graph → Reload Node
+Libraries*. The format is the one used by
+[resources/nodes/builtin.json](resources/nodes/builtin.json); a definition with
+the same `id` as a built-in replaces it.
 
-**Verified on Fedora 44 / Wayland, Mesa 26.2.5, Intel RPL-P (GL 4.6 core):**
+## Verification status
 
-- Debug and Release builds compile with `-Wall -Wextra -Wpedantic` and no warnings.
-- 26/26 automated tests pass: 20 unit tests (log parsing, project I/O, meshes,
-  camera, glslang) and 6 GPU tests that render offscreen and check pixels:
-  - default shaders compile, link and draw
-  - a solid-colour shader produces exactly that colour on the sphere and cube
-  - **a failed compile, or a failed link, leaves the previous program rendering**
-  - driver (Mesa) errors are parsed to the correct source line
-- Running the app (checked with screenshots):
-  - the default shader renders on the sphere, and the docked layout works
-  - a broken fragment shader injected at runtime shows errors with line:column,
-    marks the line in the gutter, and the preview keeps showing the last working shader
-  - opening a `.pfproj` resolves relative shader paths and applies its mesh,
-    camera and auto-compile settings; the cube and plane render with correct
-    orientation and back-face culling
+Verified on Fedora 44 (Wayland), Mesa 26.2.5, Intel RPL-P, GL 4.6 core:
 
-**Implemented but only exercised by hand-reading, not by an automated or scripted run:**
-Save Project / Save Shader through the file dialogs, mouse orbit/zoom, the
-unsaved-changes prompts, and saved window layout. `ProjectIO::save` itself is
-unit-tested.
+- Debug and Release builds with `-Wall -Wextra -Wpedantic`: no warnings.
+- **58 automated tests pass**:
+  - unit: diagnostics parsing, project/graph/material JSON, meshes, camera,
+    glslang validation, log capture, export
+  - graph: every built-in node's GLSL compiled by glslang (each output, and
+    generic nodes with both `float` and `vec3`), validation errors, determinism
+  - GPU (offscreen render + pixel checks): compile/link/draw, failed compile or
+    link keeps the previous program, uniform introspection, parameters change
+    pixels, the default graph links and draws
+  - widgets (offscreen, synthetic input): connect by dragging in both
+    directions, disconnect, move, delete, duplicate, undo/redo
+- App runs checked with screenshots: code mode, broken-shader recovery,
+  parameters loaded from a project, graph mode, a graph project rendering pure
+  red at the exact viewport pixel, both example projects, CLI export.
+- Packages: see the container install tests in the commit history.
+
+Not covered by automated tests: file dialogs (Save As, Open, Export
+location), colour picker dialogs, mouse orbit in the 3D viewport.
 
 ## Known limitations
 
-- Shader compilation by the driver runs on the GUI thread (glslang validation
-  is off-thread). Very large shaders can briefly stall the UI.
-- If glslang rejects a shader, the driver is not asked to compile it. A shader
-  that glslang rejects but a lenient driver would accept is therefore treated
-  as failed.
-- The plane is single-sided: viewed from below it is culled.
-- No material parameter panel yet. Shaders get only the built-in uniforms.
-- No textures, render targets, or multi-pass rendering.
-- `uTime` counts from application start, with no pause or reset.
-- GPU time comes from `GL_TIME_ELAPSED` queries, which arrive a few frames late.
-  Shown as "unsupported" where the driver has no timer bits.
-- Only tested on one Linux machine with an Intel/Mesa driver. The NVIDIA log
-  parser is tested against sample strings only.
+- Driver compilation runs on the GUI thread (glslang validation does not);
+  very large shaders can briefly stall the UI.
+- If glslang rejects a shader the driver is not asked; a shader only a lenient
+  driver accepts is treated as failed.
+- No textures/samplers, render targets or multi-pass rendering yet; sampler,
+  matrix and array uniforms are listed as "not editable".
+- Shader graph: fragment stage only; no sub-graphs; no copy/paste between
+  projects; 2D noise driven by UVs shows the sphere's UV seam (use the 3D
+  noise nodes for seamless results).
+- Preview lighting is fixed (two lights); the plane is single-sided.
+- Only tested on Intel/Mesa. NVIDIA/AMD log parsing is tested against sample
+  strings, not real drivers.
+- The project has no license file yet; packages declare `Proprietary`.
 
-## Not in this milestone
+## Not implemented
 
-Visual node graph, Vulkan backend, plugin system, export, AI features.
+Vulkan backend, plugin system, AI features.
