@@ -57,7 +57,9 @@ int main(int argc, char* argv[])
     const QCommandLineOption glDebugOption(
         QStringLiteral("gl-debug"),
         QStringLiteral("Create an OpenGL debug context and show driver messages in the Log panel."));
-    parser.addOptions({screenshotOption, delayOption, smokeOption, glDebugOption});
+    const QCommandLineOption graphOption(
+        QStringLiteral("graph"), QStringLiteral("Start with the shader graph generating the fragment shader."));
+    parser.addOptions({screenshotOption, delayOption, smokeOption, glDebugOption, graphOption});
     parser.process(app);
 
     pf::applyTheme(app);
@@ -65,6 +67,9 @@ int main(int argc, char* argv[])
     pf::MainWindow window;
     if (!parser.positionalArguments().isEmpty())
         window.openProject(parser.positionalArguments().constFirst());
+
+    if (parser.isSet(graphOption))
+        window.enableGraphMode();
 
     if (parser.isSet(smokeOption)) {
         QFile file(parser.value(smokeOption));

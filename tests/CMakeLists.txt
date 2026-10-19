@@ -21,3 +21,9 @@ add_executable(pf_gl_tests test_gl_renderer.cpp)
 target_link_libraries(pf_gl_tests PRIVATE pf_render pf_graph Qt6::Gui Qt6::OpenGL Catch2::Catch2)
 target_compile_definitions(pf_gl_tests PRIVATE PF_SHADER_DIR="${PROJECT_SOURCE_DIR}/resources/shaders")
 catch_discover_tests(pf_gl_tests PROPERTIES SKIP_RETURN_CODE 4 LABELS gpu)
+
+# Graph editor widgets driven by synthetic input on the offscreen platform.
+find_package(Qt6 REQUIRED COMPONENTS Test)
+add_executable(pf_widget_tests test_graph_editor.cpp)
+target_link_libraries(pf_widget_tests PRIVATE pf_grapheditor Qt6::Test Catch2::Catch2)
+catch_discover_tests(pf_widget_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen LABELS widgets)

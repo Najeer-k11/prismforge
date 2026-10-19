@@ -21,6 +21,8 @@ Project sampleProject()
     MaterialParameter tint{"uTint", ParamType::Vec3, {0.25f, 0.5f, 1.0f, 0.0f}, {}, {}};
     tint.defaultValue = tint.value; // loading sets default == saved value
     p.parameters.insert(tint.name, tint);
+    p.graphPath = "demo.pfgraph";
+    p.useGraph = true;
     return p;
 }
 } // namespace

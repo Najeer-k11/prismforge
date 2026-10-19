@@ -353,7 +353,7 @@ QList<Diagnostic> toDiagnostics(const QList<GraphIssue>& issues, const ShaderGra
                           : QStringLiteral("Node %1 (%2), port '%3': %4")
                                 .arg(issue.nodeId).arg(type, issue.port, issue.message);
         }
-        out.append({issue.severity, ShaderStage::Fragment, -1, -1, message, QStringLiteral("graph")});
+        out.append({issue.severity, ShaderStage::Fragment, -1, -1, message, QStringLiteral("graph"), issue.nodeId});
     }
     return out;
 }
@@ -362,13 +362,13 @@ ShaderGraph makeDefaultGraph()
 {
     ShaderGraph g;
     g.name = QStringLiteral("Default graph");
-    const int output = g.addNode(QStringLiteral("output.surface"), {520, 0});
-    const int uv = g.addNode(QStringLiteral("input.uv"), {-460, -40});
-    const int noise = g.addNode(QStringLiteral("noise.fbm"), {-240, -40});
+    const int output = g.addNode(QStringLiteral("output.surface"), {540, 0});
+    const int noise = g.addNode(QStringLiteral("noise.fbm3d"), {-240, -40});
     const int colorA = g.addNode(QStringLiteral("param.color"), {-240, 120});
     const int colorB = g.addNode(QStringLiteral("param.color"), {-240, 220});
-    const int mix = g.addNode(QStringLiteral("math.lerp"), {40, 40});
-    const int rough = g.addNode(QStringLiteral("param.float"), {40, 200});
+    const int contrast = g.addNode(QStringLiteral("math.smoothstep"), {0, -40});
+    const int mix = g.addNode(QStringLiteral("math.lerp"), {260, 40});
+    const int rough = g.addNode(QStringLiteral("param.float"), {260, 200});
 
     g.node(colorA)->parameterName = QStringLiteral("uDeepColor");
     g.node(colorA)->inputValues.insert(QStringLiteral("default"), {0.05f, 0.18f, 0.35f, 1.0f});
@@ -378,12 +378,14 @@ ShaderGraph makeDefaultGraph()
     g.node(rough)->inputValues.insert(QStringLiteral("default"), {0.45f, 0, 0, 0});
     g.node(rough)->rangeMin = 0.0f;
     g.node(rough)->rangeMax = 1.0f;
-    g.node(noise)->inputValues.insert(QStringLiteral("scale"), {4.0f, 0, 0, 0});
+    g.node(noise)->inputValues.insert(QStringLiteral("scale"), {2.5f, 0, 0, 0});
+    g.node(contrast)->inputValues.insert(QStringLiteral("e0"), {0.35f, 0, 0, 0});
+    g.node(contrast)->inputValues.insert(QStringLiteral("e1"), {0.65f, 0, 0, 0});
 
-    g.connect({uv, QStringLiteral("out"), noise, QStringLiteral("uv")});
     g.connect({colorA, QStringLiteral("value"), mix, QStringLiteral("a")});
     g.connect({colorB, QStringLiteral("value"), mix, QStringLiteral("b")});
-    g.connect({noise, QStringLiteral("out"), mix, QStringLiteral("t")});
+    g.connect({noise, QStringLiteral("out"), contrast, QStringLiteral("x")});
+    g.connect({contrast, QStringLiteral("out"), mix, QStringLiteral("t")});
     g.connect({mix, QStringLiteral("out"), output, QStringLiteral("baseColor")});
     g.connect({rough, QStringLiteral("value"), output, QStringLiteral("roughness")});
     return g;

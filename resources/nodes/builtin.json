@@ -1806,6 +1806,76 @@
       "functions": "vec2 pf_voronoiHash(vec2 p)\n{\n    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));\n    return fract(sin(p) * 43758.5453);\n}\n\nfloat pf_voronoi(vec2 p)\n{\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    float d = 8.0;\n    for (int y = -1; y <= 1; ++y) {\n        for (int x = -1; x <= 1; ++x) {\n            vec2 g = vec2(float(x), float(y));\n            d = min(d, length(g + pf_voronoiHash(i + g) - f));\n        }\n    }\n    return d;\n}"
     },
     {
+      "id": "noise.gradient3d",
+      "title": "Gradient Noise 3D",
+      "category": "Noise",
+      "description": "3D gradient noise in roughly [0, 1]. Driven by world position, so it has no UV seams.",
+      "inputs": [
+        {
+          "id": "position",
+          "type": "vec3",
+          "label": "Position",
+          "defaultExpr": "vWorldPosition"
+        },
+        {
+          "id": "scale",
+          "type": "float",
+          "label": "Scale",
+          "default": [
+            4.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pf_gradient3Noise({position} * {scale}) * 0.5 + 0.5",
+          "label": "Noise"
+        }
+      ],
+      "functions": "vec3 pf_gradient3Dir(vec3 p)\n{\n    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));\n    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);\n}\n\nfloat pf_gradient3Corner(vec3 i, vec3 f, vec3 o)\n{\n    return dot(pf_gradient3Dir(i + o), f - o);\n}\n\nfloat pf_gradient3Noise(vec3 p)\n{\n    vec3 i = floor(p);\n    vec3 f = fract(p);\n    vec3 u = f * f * (3.0 - 2.0 * f);\n    float x00 = mix(pf_gradient3Corner(i, f, vec3(0.0, 0.0, 0.0)), pf_gradient3Corner(i, f, vec3(1.0, 0.0, 0.0)), u.x);\n    float x10 = mix(pf_gradient3Corner(i, f, vec3(0.0, 1.0, 0.0)), pf_gradient3Corner(i, f, vec3(1.0, 1.0, 0.0)), u.x);\n    float x01 = mix(pf_gradient3Corner(i, f, vec3(0.0, 0.0, 1.0)), pf_gradient3Corner(i, f, vec3(1.0, 0.0, 1.0)), u.x);\n    float x11 = mix(pf_gradient3Corner(i, f, vec3(0.0, 1.0, 1.0)), pf_gradient3Corner(i, f, vec3(1.0, 1.0, 1.0)), u.x);\n    return mix(mix(x00, x10, u.y), mix(x01, x11, u.y), u.z);\n}"
+    },
+    {
+      "id": "noise.fbm3d",
+      "title": "Fractal Noise 3D",
+      "category": "Noise",
+      "description": "3D fractal Brownian motion (1-10 octaves). Driven by world position, so it has no UV seams.",
+      "inputs": [
+        {
+          "id": "position",
+          "type": "vec3",
+          "label": "Position",
+          "defaultExpr": "vWorldPosition"
+        },
+        {
+          "id": "scale",
+          "type": "float",
+          "label": "Scale",
+          "default": [
+            2.0
+          ]
+        },
+        {
+          "id": "octaves",
+          "type": "float",
+          "label": "Octaves",
+          "default": [
+            5.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pf_fbm3({position} * {scale}, {octaves})",
+          "label": "Noise"
+        }
+      ],
+      "functions": "vec3 pf_fbm3Dir(vec3 p)\n{\n    p = vec3(dot(p, vec3(127.1, 311.7, 74.7)), dot(p, vec3(269.5, 183.3, 246.1)), dot(p, vec3(113.5, 271.9, 124.6)));\n    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);\n}\n\nfloat pf_fbm3Corner(vec3 i, vec3 f, vec3 o)\n{\n    return dot(pf_fbm3Dir(i + o), f - o);\n}\n\nfloat pf_fbm3Noise(vec3 p)\n{\n    vec3 i = floor(p);\n    vec3 f = fract(p);\n    vec3 u = f * f * (3.0 - 2.0 * f);\n    float x00 = mix(pf_fbm3Corner(i, f, vec3(0.0, 0.0, 0.0)), pf_fbm3Corner(i, f, vec3(1.0, 0.0, 0.0)), u.x);\n    float x10 = mix(pf_fbm3Corner(i, f, vec3(0.0, 1.0, 0.0)), pf_fbm3Corner(i, f, vec3(1.0, 1.0, 0.0)), u.x);\n    float x01 = mix(pf_fbm3Corner(i, f, vec3(0.0, 0.0, 1.0)), pf_fbm3Corner(i, f, vec3(1.0, 0.0, 1.0)), u.x);\n    float x11 = mix(pf_fbm3Corner(i, f, vec3(0.0, 1.0, 1.0)), pf_fbm3Corner(i, f, vec3(1.0, 1.0, 1.0)), u.x);\n    return mix(mix(x00, x10, u.y), mix(x01, x11, u.y), u.z);\n}\n\nfloat pf_fbm3(vec3 p, float octaves)\n{\n    int count = int(clamp(octaves, 1.0, 10.0));\n    float sum = 0.0;\n    float amplitude = 0.5;\n    float norm = 0.0;\n    for (int k = 0; k < 10; ++k) {\n        if (k >= count)\n            break;\n        sum += amplitude * pf_fbm3Noise(p);\n        norm += amplitude;\n        p = p * 2.0 + vec3(17.0, 9.0, 23.0);\n        amplitude *= 0.5;\n    }\n    return sum / norm * 0.5 + 0.5;\n}"
+    },
+    {
       "id": "material.fresnel",
       "title": "Fresnel",
       "category": "Material",

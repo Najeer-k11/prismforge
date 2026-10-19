@@ -64,6 +64,22 @@ add_library(pf_editor STATIC
 target_include_directories(pf_editor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(pf_editor PUBLIC pf_core Qt6::Widgets)
 
+# --- pf_grapheditor: node canvas widgets
+add_library(pf_grapheditor STATIC
+    grapheditor/GraphItems.h
+    grapheditor/GraphItems.cpp
+    grapheditor/GraphScene.h
+    grapheditor/GraphScene.cpp
+    grapheditor/GraphView.h
+    grapheditor/GraphView.cpp
+    grapheditor/NodePropertiesPanel.h
+    grapheditor/NodePropertiesPanel.cpp
+    grapheditor/GraphEditor.h
+    grapheditor/GraphEditor.cpp
+)
+target_include_directories(pf_grapheditor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(pf_grapheditor PUBLIC pf_graph Qt6::Widgets)
+
 # --- application
 qt_add_executable(prismforge
     app/main.cpp
@@ -88,6 +104,6 @@ qt_add_resources(prismforge "builtin_shaders"
         "${PROJECT_SOURCE_DIR}/resources/shaders/default.frag"
 )
 target_link_libraries(prismforge PRIVATE
-    pf_core pf_render pf_editor
+    pf_core pf_render pf_editor pf_graph pf_grapheditor
     Qt6::Widgets Qt6::OpenGLWidgets Qt6::Concurrent)
 target_compile_definitions(prismforge PRIVATE PRISMFORGE_VERSION="${PROJECT_VERSION}")

@@ -20,6 +20,7 @@ struct Diagnostic {
     int column = -1;                  // 1-based; -1 when unknown
     QString message;
     QString origin;                   // which tool produced it, e.g. "glslang" or "driver"
+    int graphNode = -1;               // shader-graph node the message refers to, if any
 };
 
 bool hasErrors(const QList<Diagnostic>& diagnostics);

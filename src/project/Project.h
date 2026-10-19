@@ -16,7 +16,7 @@ namespace pf {
 // can be moved or checked into version control as a unit. Shader source is kept
 // in separate files rather than embedded, so diffs stay readable.
 struct Project {
-    static constexpr int kFormatVersion = 2;
+    static constexpr int kFormatVersion = 3;
 
     QString name = QStringLiteral("Untitled");
     QString vertexShaderPath;   // relative to the project directory
@@ -27,6 +27,12 @@ struct Project {
 
     // Parameter values the user changed from the shader defaults (v2+).
     QHash<QString, MaterialParameter> parameters;
+
+    // Shader graph document, relative to the project directory (v3+). When
+    // useGraph is set the graph generates the fragment shader; the hand-written
+    // fragment file is kept untouched either way.
+    QString graphPath;
+    bool useGraph = false;
 
     struct Camera {
         float yawDegrees = 30.0f;

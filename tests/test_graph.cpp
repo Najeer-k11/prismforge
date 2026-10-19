@@ -132,7 +132,7 @@ TEST_CASE("Default graph generates valid and deterministic GLSL", "[graph]")
     // Parameters become hinted uniforms; helpers are emitted once.
     CHECK(first.source.contains("uniform vec3 uDeepColor = vec3(0.0500000007, 0.180000007, 0.349999994); // @color"));
     CHECK(first.source.contains("uniform float uRoughness = 0.449999988; // @range(0.0, 1.0)"));
-    CHECK(first.source.count("float pf_fbm(") == 1);
+    CHECK(first.source.count("float pf_fbm3(") == 1);
     CHECK(first.source.contains("fragColor = pf_shadeSurface("));
 }
 

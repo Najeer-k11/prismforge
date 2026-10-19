@@ -1,6 +1,7 @@
 #pragma once
 
 #include "diagnostics/Diagnostic.h"
+#include "graph/NodeRegistry.h"
 #include "project/Project.h"
 #include "render/Renderer.h"
 
@@ -10,6 +11,7 @@
 #include <array>
 
 class QAction;
+class QDockWidget;
 class QActionGroup;
 class QLabel;
 class QTabWidget;
@@ -17,6 +19,10 @@ class QTimer;
 class QTreeWidget;
 
 namespace pf {
+
+namespace grapheditor {
+class GraphEditor;
+}
 
 class CodeEditor;
 class DiagnosticsPanel;
@@ -33,6 +39,7 @@ public:
     // Replaces the fragment source once the first program has built
     // successfully; used by the --smoke-replace-fragment command line option.
     void replaceFragmentAfterFirstBuild(const QString& source);
+    void enableGraphMode();
 
 signals:
     void compileFinished(bool success);
@@ -56,7 +63,7 @@ private:
     void startCompile();
     void onValidationFinished();
     void onProgramBuilt(const ProgramBuildResult& result);
-    void finishCompile(bool success, const QList<Diagnostic>& diagnostics);
+    void finishCompile(bool success, const QList<Diagnostic>& compileDiagnostics);
     ShaderSources currentSources() const;
 
     // Documents and projects
@@ -77,6 +84,12 @@ private:
     void applyProjectSettings(const Project& project);
 
     void applyParameters(QList<MaterialParameter> parameters);
+
+    // Shader graph
+    bool graphMode() const;
+    void setGraphMode(bool enabled);
+    void reloadNodeLibraries();
+    static QString userNodeLibraryDir();
     void setSettingsModified(bool modified);
     bool hasUnsavedChanges() const;
 
@@ -93,6 +106,14 @@ private:
     QLabel* m_rendererLabel = nullptr;
     QLabel* m_statsLabel = nullptr;
     QTreeWidget* m_capabilities = nullptr;
+
+    grapheditor::GraphEditor* m_graphEditor = nullptr;
+    QDockWidget* m_graphDock = nullptr;
+    CodeEditor* m_generatedEditor = nullptr; // read-only view of graph output
+    QAction* m_graphModeAction = nullptr;
+    graph::NodeRegistry m_registry;
+    QString m_graphPath; // absolute; empty until saved
+    QList<Diagnostic> m_graphDiagnostics; // codegen warnings for the compile in flight
     QLabel* m_statusCompile = nullptr;
     QLabel* m_statusFrame = nullptr;
 

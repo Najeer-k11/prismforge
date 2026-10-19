@@ -40,7 +40,7 @@ std::optional<DataType> resolvedOutputType(const ShaderGraph& graph, const NodeR
 // Converts issues to diagnostics for the Diagnostics panel.
 QList<Diagnostic> toDiagnostics(const QList<GraphIssue>& issues, const ShaderGraph& graph);
 
-// A small starter graph: UV -> noise -> colour mix -> surface output.
+// A small starter graph: 3D noise -> contrast -> colour mix -> surface output.
 ShaderGraph makeDefaultGraph();
 
 } // namespace pf::graph

@@ -26,6 +26,7 @@ QJsonObject toJson(const Project& project)
             }},
         }},
         {"parameters", parameterValuesToJson(project.parameters)},
+        {"graph", QJsonObject{{"file", project.graphPath}, {"enabled", project.useGraph}}},
     };
 }
 
@@ -61,6 +62,10 @@ ProjectLoadResult fromJson(const QJsonObject& json)
     p.camera.distance = float(camera.value("distance").toDouble(defaults.camera.distance));
 
     p.parameters = parameterValuesFromJson(json.value("parameters").toObject());
+
+    const QJsonObject graph = json.value("graph").toObject();
+    p.graphPath = graph.value("file").toString();
+    p.useGraph = graph.value("enabled").toBool(false) && !p.graphPath.isEmpty();
 
     return {p, {}};
 }

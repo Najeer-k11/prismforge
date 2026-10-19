@@ -6,11 +6,14 @@
 #include "app/ViewportWidget.h"
 #include "diagnostics/Logging.h"
 #include "editor/CodeEditor.h"
+#include "graph/GraphCodegen.h"
+#include "grapheditor/GraphEditor.h"
 #include "shader/GlslangValidator.h"
 
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDockWidget>
 #include <QFileDialog>
@@ -20,6 +23,8 @@
 #include <QMessageBox>
 #include <QSaveFile>
 #include <QSettings>
+#include <QStandardPaths>
+#include <QUrl>
 #include <QStatusBar>
 #include <QStyle>
 #include <QTabWidget>
@@ -66,6 +71,7 @@ QString stageSuffix(ShaderStage stage)
 }
 
 constexpr int tabIndex(ShaderStage stage) { return stage == ShaderStage::Fragment ? 0 : 1; }
+constexpr int kGeneratedTab = 2;
 
 } // namespace
 
@@ -103,6 +109,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
             finishCompile(false, {{Severity::Error, std::nullopt, -1, -1, reason, "renderer"}});
     });
 
+    reloadNodeLibraries();
+    m_graphEditor->setGraph(graph::makeDefaultGraph());
     loadDefaultShaders();
     restoreLayout();
     updateWindowTitle();
@@ -135,10 +143,28 @@ void MainWindow::createDocks()
         });
     }
 
+    m_generatedEditor = new CodeEditor(m_editorTabs);
+    m_generatedEditor->setReadOnly(true);
+    m_editorTabs->addTab(m_generatedEditor, tr("generated.frag (graph)"));
+    m_editorTabs->setTabToolTip(kGeneratedTab, tr("Fragment shader generated from the shader graph (read-only)"));
+    m_editorTabs->setTabVisible(kGeneratedTab, false);
+
     auto* editorDock = new QDockWidget(tr("Shader Editor"), this);
     editorDock->setObjectName("ShaderEditorDock");
     editorDock->setWidget(m_editorTabs);
     addDockWidget(Qt::RightDockWidgetArea, editorDock);
+
+    m_graphEditor = new grapheditor::GraphEditor(this);
+    m_graphDock = new QDockWidget(tr("Shader Graph"), this);
+    m_graphDock->setObjectName("ShaderGraphDock");
+    m_graphDock->setWidget(m_graphEditor);
+    tabifyDockWidget(editorDock, m_graphDock);
+    editorDock->raise();
+    connect(m_graphEditor, &grapheditor::GraphEditor::graphChanged, this, [this] {
+        setSettingsModified(true);
+        if (graphMode() && m_autoCompileAction && m_autoCompileAction->isChecked())
+            m_autoCompileTimer->start();
+    });
 
     m_diagnostics = new DiagnosticsPanel(this);
     auto* diagDock = new QDockWidget(tr("Diagnostics"), this);
@@ -146,11 +172,19 @@ void MainWindow::createDocks()
     diagDock->setWidget(m_diagnostics);
     addDockWidget(Qt::BottomDockWidgetArea, diagDock);
     connect(m_diagnostics, &DiagnosticsPanel::diagnosticActivated, this, [this](const Diagnostic& d) {
+        if (d.graphNode >= 0) {
+            m_graphDock->show();
+            m_graphDock->raise();
+            m_graphEditor->selectNode(d.graphNode);
+            return;
+        }
         // Program-level messages have no stage; show the fragment shader.
         const ShaderStage stage = d.stage.value_or(ShaderStage::Fragment);
-        m_editorTabs->setCurrentIndex(tabIndex(stage));
+        const bool generated = stage == ShaderStage::Fragment && graphMode();
+        m_editorTabs->setCurrentIndex(generated ? kGeneratedTab : tabIndex(stage));
+        CodeEditor* editor = generated ? m_generatedEditor : document(stage).editor;
         if (d.line > 0)
-            document(stage).editor->goToLine(d.line, d.column);
+            editor->goToLine(d.line, d.column);
     });
 
     m_materialPanel = new MaterialPanel(this);
@@ -158,7 +192,6 @@ void MainWindow::createDocks()
     materialDock->setObjectName("MaterialDock");
     materialDock->setWidget(m_materialPanel);
     addDockWidget(Qt::LeftDockWidgetArea, materialDock);
-    resizeDocks({materialDock}, {380}, Qt::Horizontal);
     connect(m_materialPanel, &MaterialPanel::parameterChanged, this, [this](const MaterialParameter& p) {
         m_parameterOverrides.insert(p.name, p);
         m_viewport->setParameter(p);
@@ -203,7 +236,7 @@ void MainWindow::createDocks()
     tabifyDockWidget(diagDock, capsDock);
     diagDock->raise();
 
-    resizeDocks({editorDock}, {560}, Qt::Horizontal);
+    resizeDocks({materialDock, editorDock}, {360, 620}, Qt::Horizontal);
     resizeDocks({diagDock}, {240}, Qt::Vertical);
     resizeDocks({diagDock, infoDock}, {700, 300}, Qt::Horizontal);
 }
@@ -212,6 +245,7 @@ void MainWindow::createActions()
 {
     auto* fileMenu = menuBar()->addMenu(tr("&File"));
     auto* shaderMenu = menuBar()->addMenu(tr("&Shader"));
+    auto* graphMenu = menuBar()->addMenu(tr("&Graph"));
     auto* viewMenu = menuBar()->addMenu(tr("&View"));
     auto* helpMenu = menuBar()->addMenu(tr("&Help"));
 
@@ -242,6 +276,28 @@ void MainWindow::createActions()
                           [this] { m_editorTabs->setCurrentIndex(tabIndex(ShaderStage::Fragment)); });
     shaderMenu->addAction(tr("Vertex Shader"), QKeySequence(tr("Ctrl+2")), this,
                           [this] { m_editorTabs->setCurrentIndex(tabIndex(ShaderStage::Vertex)); });
+
+    m_graphModeAction = graphMenu->addAction(tr("Use Shader &Graph"));
+    m_graphModeAction->setCheckable(true);
+    m_graphModeAction->setShortcut(QKeySequence(tr("Ctrl+G")));
+    m_graphModeAction->setToolTip(tr("Generate the fragment shader from the shader graph instead of the "
+                                     "hand-written source (which is kept unchanged)"));
+    connect(m_graphModeAction, &QAction::toggled, this, &MainWindow::setGraphMode);
+    graphMenu->addSeparator();
+    graphMenu->addAction(tr("Reset Graph to Default"), this, [this] {
+        if (QMessageBox::question(this, tr("Reset graph"), tr("Replace the current graph with the default graph?"))
+            != QMessageBox::Yes)
+            return;
+        m_graphEditor->setGraph(graph::makeDefaultGraph());
+        setSettingsModified(true);
+        if (graphMode())
+            requestCompile();
+    });
+    graphMenu->addAction(tr("Reload Node Libraries"), this, &MainWindow::reloadNodeLibraries);
+    graphMenu->addAction(tr("Open User Node Library Folder"), this, [] {
+        QDir().mkpath(userNodeLibraryDir());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(userNodeLibraryDir()));
+    });
 
     m_meshGroup = new QActionGroup(this);
     const std::pair<PreviewMesh, QString> meshes[] = {
@@ -280,6 +336,7 @@ void MainWindow::createActions()
     toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     toolbar->addAction(compileAction);
     toolbar->addAction(m_autoCompileAction);
+    toolbar->addAction(m_graphModeAction);
     toolbar->addSeparator();
     for (QAction* a : m_meshGroup->actions())
         toolbar->addAction(a);
@@ -323,7 +380,21 @@ void MainWindow::startCompile()
     m_compileQueued = false;
     m_compilingSources = currentSources();
     m_validationDiagnostics.clear();
+    m_graphDiagnostics.clear();
     m_statusCompile->setText(tr("Compiling…"));
+
+    if (graphMode()) {
+        const graph::CodegenResult& generated = m_graphEditor->codegen();
+        const QList<Diagnostic> graphDiagnostics = graph::toDiagnostics(generated.issues, m_graphEditor->graph());
+        if (!generated.success) {
+            finishCompile(false, graphDiagnostics);
+            return;
+        }
+        m_graphDiagnostics = graphDiagnostics; // warnings only
+        m_compilingSources.fragment = generated.source;
+        if (m_generatedEditor->toPlainText() != generated.source)
+            m_generatedEditor->setPlainText(generated.source);
+    }
 
     if (GlslangValidator::isAvailable()) {
         m_validation.setFuture(QtConcurrent::run(&GlslangValidator::validate, m_compilingSources));
@@ -387,9 +458,10 @@ bool MainWindow::hasUnsavedChanges() const
            });
 }
 
-void MainWindow::finishCompile(bool success, const QList<Diagnostic>& diagnostics)
+void MainWindow::finishCompile(bool success, const QList<Diagnostic>& compileDiagnostics)
 {
     m_compileInFlight = false;
+    const QList<Diagnostic> diagnostics = std::exchange(m_graphDiagnostics, {}) + compileDiagnostics;
     if (success)
         m_hasWorkingProgram = true;
 
@@ -411,13 +483,18 @@ void MainWindow::finishCompile(bool success, const QList<Diagnostic>& diagnostic
     m_diagnostics->setDiagnostics(diagnostics, summary, success);
     m_statusCompile->setText(summary);
 
-    for (StageDocument& doc : m_documents) {
-        QList<Diagnostic> stageDiagnostics;
+    auto forStage = [&](ShaderStage stage) {
+        QList<Diagnostic> list;
         for (const Diagnostic& d : diagnostics)
-            if (d.stage == doc.stage)
-                stageDiagnostics.append(d);
-        doc.editor->setDiagnostics(stageDiagnostics);
-    }
+            if (d.stage == stage && d.graphNode < 0)
+                list.append(d);
+        return list;
+    };
+    document(ShaderStage::Vertex).editor->setDiagnostics(forStage(ShaderStage::Vertex));
+    const bool generated = graphMode();
+    document(ShaderStage::Fragment).editor->setDiagnostics(generated ? QList<Diagnostic>{}
+                                                                     : forStage(ShaderStage::Fragment));
+    m_generatedEditor->setDiagnostics(generated ? forStage(ShaderStage::Fragment) : QList<Diagnostic>{});
 
     qCInfo(lcShader).noquote() << summary;
     emit compileFinished(success);
@@ -428,6 +505,11 @@ void MainWindow::finishCompile(bool success, const QList<Diagnostic>& diagnostic
     }
     if (m_compileQueued)
         requestCompile();
+}
+
+void MainWindow::enableGraphMode()
+{
+    m_graphModeAction->setChecked(true);
 }
 
 void MainWindow::replaceFragmentAfterFirstBuild(const QString& source)
@@ -545,6 +627,22 @@ bool MainWindow::saveProject(bool saveAs)
     project.camera = {cam.yaw(), cam.pitch(), cam.distance()};
     project.parameters = m_parameterOverrides;
 
+    // The graph is always saved, even when not in use, so it isn't lost.
+    QString graphPath = m_graphPath;
+    if (saveAs || graphPath.isEmpty())
+        graphPath = projectInfo.absoluteDir().filePath(project.name + QStringLiteral(".pfgraph"));
+    {
+        QSaveFile graphFile(graphPath);
+        if (!graphFile.open(QIODevice::WriteOnly) ||
+            graphFile.write(m_graphEditor->graph().serialize()) < 0 || !graphFile.commit()) {
+            QMessageBox::warning(this, tr("Save failed"),
+                                 tr("Could not save the shader graph:\n%1").arg(graphFile.errorString()));
+            return false;
+        }
+    }
+    project.graphPath = ProjectIO::toRelativePath(projectPath, graphPath);
+    project.useGraph = graphMode();
+
     QString error;
     if (!ProjectIO::save(project, projectPath, &error)) {
         QMessageBox::warning(this, tr("Save failed"), tr("Could not save project:\n%1").arg(error));
@@ -552,6 +650,7 @@ bool MainWindow::saveProject(bool saveAs)
     }
     m_projectPath = projectInfo.absoluteFilePath();
     m_projectName = project.name;
+    m_graphPath = QFileInfo(graphPath).absoluteFilePath();
     setSettingsModified(false);
     statusBar()->showMessage(tr("Saved %1").arg(m_projectPath), 4000);
     return true;
@@ -579,6 +678,30 @@ bool MainWindow::openProject(const QString& filePath)
 
     m_projectPath = QFileInfo(filePath).absoluteFilePath();
     m_projectName = project.name;
+    reloadNodeLibraries(); // picks up the project's nodes/ folder
+
+    graph::ShaderGraph graph = graph::makeDefaultGraph();
+    m_graphPath.clear();
+    if (!project.graphPath.isEmpty()) {
+        const QString path = ProjectIO::toAbsolutePath(filePath, project.graphPath);
+        QFile file(path);
+        QString graphError;
+        std::optional<graph::ShaderGraph> loadedGraph;
+        if (file.open(QIODevice::ReadOnly))
+            loadedGraph = graph::ShaderGraph::deserialize(file.readAll(), &graphError);
+        else
+            graphError = file.errorString();
+        if (loadedGraph) {
+            graph = *loadedGraph;
+            m_graphPath = path;
+        } else {
+            QMessageBox::warning(this, tr("Shader graph"),
+                                 tr("Could not load the shader graph %1:\n%2\n\nThe default graph is used instead.")
+                                     .arg(path, graphError));
+        }
+    }
+    m_graphEditor->setGraph(graph);
+
     applyProjectSettings(project);
     updateWindowTitle();
     requestCompile();
@@ -595,6 +718,7 @@ void MainWindow::applyProjectSettings(const Project& project)
     m_viewport->camera().set(project.camera.yawDegrees, project.camera.pitchDegrees,
                              project.camera.distance);
     m_parameterOverrides = project.parameters;
+    m_graphModeAction->setChecked(project.useGraph);
     setSettingsModified(false);
 }
 
@@ -604,6 +728,9 @@ void MainWindow::newProject()
         return;
     m_projectPath.clear();
     m_projectName = QStringLiteral("Untitled");
+    m_graphPath.clear();
+    reloadNodeLibraries();
+    m_graphEditor->setGraph(graph::makeDefaultGraph());
     loadDefaultShaders();
     applyProjectSettings(Project{});
     updateWindowTitle();
@@ -675,6 +802,48 @@ bool MainWindow::maybeSaveChanges()
     return answer == QMessageBox::Discard;
 }
 
+bool MainWindow::graphMode() const
+{
+    return m_graphModeAction && m_graphModeAction->isChecked();
+}
+
+void MainWindow::setGraphMode(bool enabled)
+{
+    m_editorTabs->setTabVisible(kGeneratedTab, enabled);
+    if (enabled) {
+        m_graphDock->show();
+        m_graphDock->raise();
+    }
+    updateTabTitles();
+    setSettingsModified(true);
+    requestCompile();
+}
+
+QString MainWindow::userNodeLibraryDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/prismforge/nodes");
+}
+
+void MainWindow::reloadNodeLibraries()
+{
+    graph::NodeRegistry registry = graph::NodeRegistry::builtin();
+    const int builtinCount = registry.size();
+    QStringList errors;
+    int user = registry.loadDirectory(userNodeLibraryDir(), &errors);
+    int fromProject = 0;
+    if (!m_projectPath.isEmpty())
+        fromProject = registry.loadDirectory(QFileInfo(m_projectPath).absoluteDir().filePath(QStringLiteral("nodes")),
+                                             &errors);
+    for (const QString& e : errors)
+        qCWarning(lcApp).noquote() << "Node library:" << e;
+    qCInfo(lcApp).noquote() << QStringLiteral("Node libraries: %1 built-in, %2 user, %3 project definitions")
+                                   .arg(builtinCount).arg(user).arg(fromProject);
+    m_registry = std::move(registry);
+    m_graphEditor->setRegistry(&m_registry);
+    if (graphMode())
+        requestCompile();
+}
+
 void MainWindow::updateTabTitles()
 {
     for (const StageDocument& doc : m_documents) {
@@ -682,6 +851,8 @@ void MainWindow::updateTabTitles()
                                                : QFileInfo(doc.filePath).fileName();
         if (doc.editor->document()->isModified())
             title += QStringLiteral(" •");
+        if (doc.stage == ShaderStage::Fragment && graphMode())
+            title += tr(" (unused: graph mode)");
         const int index = tabIndex(doc.stage);
         m_editorTabs->setTabText(index, title);
         m_editorTabs->setTabToolTip(index, doc.filePath.isEmpty() ? tr("Not saved") : doc.filePath);
