@@ -1,6 +1,7 @@
 #include "app/ViewportWidget.h"
 
 #include "diagnostics/Logging.h"
+#include "render/FrameSetup.h"
 #include "render/gl/GLRenderer.h"
 
 #include <QMouseEvent>
@@ -126,6 +127,35 @@ void ViewportWidget::setParameter(const MaterialParameter& parameter)
     update();
 }
 
+bool ViewportWidget::renderImage(QSize size, int samples, float time, QImage* image, QString* error,
+                                 const OrbitCamera* camera)
+{
+    if (!m_renderer || !m_renderer->hasProgram()) {
+        if (error)
+            *error = tr("No working shader to render");
+        return false;
+    }
+    makeCurrent();
+    if (m_meshDirty) {
+        m_renderer->setMesh(makeMesh(m_mesh));
+        m_meshDirty = false;
+    }
+    const bool ok = m_renderer->renderToImage(makeFrameParams(camera ? *camera : m_camera, m_mesh, size, time),
+                                              samples, image, error);
+    doneCurrent();
+    return ok;
+}
+
+QSize ViewportWidget::maxRenderSize() const
+{
+    return m_renderer ? m_renderer->maxRenderSize() : QSize();
+}
+
+int ViewportWidget::maxSamples() const
+{
+    return m_renderer ? m_renderer->maxSamples() : 0;
+}
+
 void ViewportWidget::setPreviewMesh(PreviewMesh mesh)
 {
     m_mesh = mesh;
@@ -152,13 +182,7 @@ void ViewportWidget::paintGL()
     const qint64 now = m_clock.nsecsElapsed();
     const QSize fbSize = size() * devicePixelRatio();
 
-    FrameParams params;
-    params.view = m_camera.viewMatrix();
-    params.projection = m_camera.projectionMatrix(float(fbSize.width()) / std::max(fbSize.height(), 1));
-    params.cameraPosition = m_camera.position();
-    params.timeSeconds = float(double(now) / 1.0e9);
-    params.framebufferSize = fbSize;
-    m_renderer->renderFrame(params);
+    m_renderer->renderFrame(makeFrameParams(m_camera, m_mesh, fbSize, timeSeconds()));
 
     if (m_lastFrameNs != 0) {
         m_intervalAccumMs += double(now - m_lastFrameNs) / 1.0e6;

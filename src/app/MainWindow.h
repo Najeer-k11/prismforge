@@ -3,6 +3,7 @@
 #include "diagnostics/Diagnostic.h"
 #include "graph/NodeRegistry.h"
 #include "project/Project.h"
+#include "app/RenderDialogs.h"
 #include "render/Renderer.h"
 
 #include <QFutureWatcher>
@@ -43,6 +44,10 @@ public:
     // Exports to `directory` after the first successful compile, then quits
     // (exit code 0 on success). Used by the --export command line option.
     void exportAfterFirstBuild(const QString& directory);
+    // Render an image / video after the first successful compile, then quit
+    // (exit code 0 on success). Used by --render-image / --render-video.
+    void renderImageAfterFirstBuild(const ImageRenderOptions& options);
+    void renderVideoAfterFirstBuild(const VideoRenderOptions& options);
 
 signals:
     void compileFinished(bool success);
@@ -90,6 +95,11 @@ private:
 
     // Shader graph
     bool exportMaterial(QString directory, bool interactive);
+    void showRenderImageDialog();
+    void showRenderVideoDialog();
+    bool renderImage(const ImageRenderOptions& options, bool interactive);
+    void renderVideo(const VideoRenderOptions& options, bool interactive);
+    QString suggestedOutputBase() const;
 
     bool graphMode() const;
     void setGraphMode(bool enabled);
@@ -126,6 +136,9 @@ private:
     QByteArray m_lastGoodGraphJson;
     QList<MaterialParameter> m_activeParameters;
     QString m_pendingExportDir;
+    std::optional<ImageRenderOptions> m_pendingImage;
+    std::optional<VideoRenderOptions> m_pendingVideo;
+    bool m_videoRunning = false;
     QLabel* m_statusCompile = nullptr;
     QLabel* m_statusFrame = nullptr;
 

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <tuple>
 
 namespace pf::gl {
@@ -24,6 +25,8 @@ void deleteShader(Functions* gl, GLuint n) { gl->glDeleteShader(n); }
 void deleteProgram(Functions* gl, GLuint n) { gl->glDeleteProgram(n); }
 void deleteBuffer(Functions* gl, GLuint n) { gl->glDeleteBuffers(1, &n); }
 void deleteVertexArray(Functions* gl, GLuint n) { gl->glDeleteVertexArrays(1, &n); }
+void deleteFramebuffer(Functions* gl, GLuint n) { gl->glDeleteFramebuffers(1, &n); }
+void deleteRenderbuffer(Functions* gl, GLuint n) { gl->glDeleteRenderbuffers(1, &n); }
 
 QString shaderInfoLog(Functions* gl, GLuint shader)
 {
@@ -59,7 +62,8 @@ GLRenderer::~GLRenderer()
     }
     // Deleting names on a different (or no) context would be wrong; leak them.
     qCWarning(lcRender) << "GLRenderer destroyed without its context current; leaking GL objects";
-    for (GlName* name : {&m_program, &m_vao, &m_vbo, &m_ibo})
+    for (GlName* name : {&m_program, &m_vao, &m_vbo, &m_ibo, &m_offscreen.msFbo, &m_offscreen.msColor,
+                         &m_offscreen.msDepth, &m_offscreen.resolveFbo, &m_offscreen.resolveColor})
         name->release();
 }
 
@@ -94,6 +98,14 @@ bool GLRenderer::initialize(QString* error)
     m_gl->glGetQueryiv(GL_TIME_ELAPSED, GL_QUERY_COUNTER_BITS, &timerBits);
     m_info.gpuTimerQueries = timerBits > 0;
     queryCapabilities(fmt, timerBits);
+
+    GLint maxRenderbuffer = 0, maxTexture = 0, viewport[2] = {};
+    m_gl->glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRenderbuffer);
+    m_gl->glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTexture);
+    m_gl->glGetIntegerv(GL_MAX_VIEWPORT_DIMS, viewport);
+    m_maxRenderSize = QSize(std::min({maxRenderbuffer, maxTexture, viewport[0]}),
+                            std::min({maxRenderbuffer, maxTexture, viewport[1]}));
+    m_gl->glGetIntegerv(GL_MAX_SAMPLES, &m_maxSamples);
     if (m_info.gpuTimerQueries)
         m_gl->glCreateQueries(GL_TIME_ELAPSED, kTimerQueries, m_timerQueries.data());
     else
@@ -188,6 +200,7 @@ void GLRenderer::shutdown()
         return;
     m_program.reset();
     m_parameterSlots.clear();
+    m_offscreen = OffscreenTarget{};
     m_vao.reset();
     m_vbo.reset();
     m_ibo.reset();
@@ -449,6 +462,106 @@ void GLRenderer::renderFrame(const FrameParams& params)
     m_stats.drawCalls = drawCalls;
     m_stats.triangles = drawCalls ? std::size_t(m_indexCount / 3) : 0;
     m_stats.cpuSubmitMs = double(cpuTimer.nsecsElapsed()) / 1.0e6;
+}
+
+bool GLRenderer::ensureOffscreenTarget(QSize size, int samples, QString* error)
+{
+    if (m_offscreen.msFbo && m_offscreen.size == size && m_offscreen.samples == samples)
+        return true;
+    m_offscreen = OffscreenTarget{};
+
+    auto makeRenderbuffer = [this](GLenum format, int sampleCount, QSize s) {
+        GLuint rb = 0;
+        m_gl->glCreateRenderbuffers(1, &rb);
+        m_gl->glNamedRenderbufferStorageMultisample(rb, sampleCount, format, s.width(), s.height());
+        return GlName(m_gl, rb, deleteRenderbuffer);
+    };
+    auto makeFramebuffer = [this] {
+        GLuint fb = 0;
+        m_gl->glCreateFramebuffers(1, &fb);
+        return GlName(m_gl, fb, deleteFramebuffer);
+    };
+
+    OffscreenTarget t;
+    t.size = size;
+    t.samples = samples;
+    t.msFbo = makeFramebuffer();
+    t.msColor = makeRenderbuffer(GL_RGBA8, samples, size);
+    t.msDepth = makeRenderbuffer(GL_DEPTH_COMPONENT24, samples, size);
+    m_gl->glNamedFramebufferRenderbuffer(t.msFbo.get(), GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, t.msColor.get());
+    m_gl->glNamedFramebufferRenderbuffer(t.msFbo.get(), GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, t.msDepth.get());
+    t.resolveFbo = makeFramebuffer();
+    t.resolveColor = makeRenderbuffer(GL_RGBA8, 0, size);
+    m_gl->glNamedFramebufferRenderbuffer(t.resolveFbo.get(), GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
+                                         t.resolveColor.get());
+
+    for (GLuint fbo : {t.msFbo.get(), t.resolveFbo.get()}) {
+        const GLenum status = m_gl->glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            if (error)
+                *error = QStringLiteral("Could not create a %1x%2 render target (status 0x%3); "
+                                        "the GPU may be out of memory")
+                             .arg(size.width()).arg(size.height()).arg(status, 0, 16);
+            return false;
+        }
+    }
+    m_offscreen = std::move(t);
+    return true;
+}
+
+bool GLRenderer::renderToImage(const FrameParams& params, int samples, QImage* image, QString* error)
+{
+    const QSize size = params.framebufferSize;
+    if (!m_gl || size.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("Renderer is not initialized");
+        return false;
+    }
+    if (size.width() > m_maxRenderSize.width() || size.height() > m_maxRenderSize.height()) {
+        if (error)
+            *error = QStringLiteral("%1x%2 exceeds this GPU's maximum render size of %3x%4")
+                         .arg(size.width()).arg(size.height())
+                         .arg(m_maxRenderSize.width()).arg(m_maxRenderSize.height());
+        return false;
+    }
+    samples = std::clamp(samples, 0, m_maxSamples);
+    if (!ensureOffscreenTarget(size, samples, error))
+        return false;
+
+    GLint previousDraw = 0, previousRead = 0;
+    m_gl->glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDraw);
+    m_gl->glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousRead);
+
+    m_gl->glBindFramebuffer(GL_FRAMEBUFFER, m_offscreen.msFbo.get());
+    renderFrame(params);
+    m_gl->glBlitNamedFramebuffer(m_offscreen.msFbo.get(), m_offscreen.resolveFbo.get(), 0, 0, size.width(),
+                                 size.height(), 0, 0, size.width(), size.height(), GL_COLOR_BUFFER_BIT,
+                                 GL_NEAREST);
+
+    // GL rows are bottom-up; read into a buffer and flip into the image.
+    const qsizetype rowBytes = qsizetype(size.width()) * 4;
+    QByteArray pixels(rowBytes * size.height(), Qt::Uninitialized);
+    m_gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, m_offscreen.resolveFbo.get());
+    m_gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    m_gl->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+    m_gl->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, GLuint(previousDraw));
+    m_gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, GLuint(previousRead));
+
+    QImage out(size, QImage::Format_RGBX8888);
+    if (out.isNull()) {
+        if (error)
+            *error = QStringLiteral("Out of memory allocating a %1x%2 image").arg(size.width()).arg(size.height());
+        return false;
+    }
+    for (int y = 0; y < size.height(); ++y) {
+        uchar* dst = out.scanLine(size.height() - 1 - y);
+        std::memcpy(dst, pixels.constData() + rowBytes * y, size_t(rowBytes));
+        for (int x = 0; x < size.width(); ++x)
+            dst[x * 4 + 3] = 0xff; // opaque: alpha written by the shader is not meaningful here
+    }
+    *image = std::move(out);
+    return true;
 }
 
 } // namespace pf::gl

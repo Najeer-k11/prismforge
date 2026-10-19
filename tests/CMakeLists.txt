@@ -28,3 +28,12 @@ find_package(Qt6 REQUIRED COMPONENTS Test)
 add_executable(pf_widget_tests test_graph_editor.cpp)
 target_link_libraries(pf_widget_tests PRIVATE pf_grapheditor Qt6::Test Catch2::Catch2)
 catch_discover_tests(pf_widget_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen LABELS widgets)
+
+# Video encoding; with FFmpeg, clips are encoded and decoded back for checks.
+add_executable(pf_video_tests test_video.cpp)
+target_link_libraries(pf_video_tests PRIVATE pf_media Catch2::Catch2WithMain)
+if(PRISMFORGE_HAVE_FFMPEG)
+    target_compile_definitions(pf_video_tests PRIVATE PRISMFORGE_HAVE_FFMPEG=1)
+    target_link_libraries(pf_video_tests PRIVATE PkgConfig::FFMPEG)
+endif()
+catch_discover_tests(pf_video_tests PROPERTIES LABELS video)

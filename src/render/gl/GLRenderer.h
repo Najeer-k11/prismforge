@@ -74,6 +74,9 @@ public:
 
     void setMesh(const MeshData& mesh) override;
     void renderFrame(const FrameParams& params) override;
+    bool renderToImage(const FrameParams& params, int samples, QImage* image, QString* error) override;
+    QSize maxRenderSize() const override { return m_maxRenderSize; }
+    int maxSamples() const override { return m_maxSamples; }
 
     FrameStats lastFrameStats() const override { return m_stats; }
     RendererInfo info() const override { return m_info; }
@@ -113,6 +116,19 @@ private:
     int m_timerIndex = 0;
 
     FrameStats m_stats;
+
+    // Offscreen targets for renderToImage(): a multisampled framebuffer that
+    // is resolved into a single-sample one for read-back.
+    struct OffscreenTarget {
+        QSize size;
+        int samples = 0;
+        GlName msFbo, msColor, msDepth;
+        GlName resolveFbo, resolveColor;
+    };
+    bool ensureOffscreenTarget(QSize size, int samples, QString* error);
+    OffscreenTarget m_offscreen;
+    QSize m_maxRenderSize;
+    int m_maxSamples = 0;
 };
 
 } // namespace pf::gl

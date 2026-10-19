@@ -1,5 +1,6 @@
 #include "render/Mesh.h"
 #include "render/OrbitCamera.h"
+#include "render/RenderPresets.h"
 
 #include <QVector3D>
 
@@ -17,7 +18,7 @@ QVector3D nrm(const Vertex& v) { return {v.normal[0], v.normal[1], v.normal[2]};
 
 TEST_CASE("Preview meshes are well formed", "[mesh]")
 {
-    const PreviewMesh kind = GENERATE(PreviewMesh::Sphere, PreviewMesh::Plane, PreviewMesh::Cube);
+    const PreviewMesh kind = GENERATE(PreviewMesh::Sphere, PreviewMesh::Plane, PreviewMesh::Cube, PreviewMesh::Screen);
     const MeshData mesh = makeMesh(kind);
     INFO("mesh: " << toString(kind).toStdString());
 
@@ -58,7 +59,7 @@ TEST_CASE("Mesh sizes", "[mesh]")
 
 TEST_CASE("Mesh names round-trip", "[mesh]")
 {
-    for (PreviewMesh m : {PreviewMesh::Sphere, PreviewMesh::Plane, PreviewMesh::Cube})
+    for (PreviewMesh m : kAllPreviewMeshes)
         CHECK(previewMeshFromString(toString(m)) == m);
     CHECK(previewMeshFromString("CUBE") == PreviewMesh::Cube);
     CHECK_FALSE(previewMeshFromString("teapot"));
@@ -92,4 +93,23 @@ TEST_CASE("Orbit camera position is at the requested distance", "[camera]")
     const QVector3D clip = cam.projectionMatrix(1.5f).map(cam.viewMatrix().map(QVector3D(0, 0, 0)));
     CHECK_THAT(clip.x(), WithinAbs(0.0, 1e-5));
     CHECK_THAT(clip.y(), WithinAbs(0.0, 1e-5));
+}
+
+TEST_CASE("Resolutions parse from presets, aliases and WxH", "[render]")
+{
+    CHECK(parseResolution("4k") == QSize(3840, 2160));
+    CHECK(parseResolution("UHD") == QSize(3840, 2160));
+    CHECK(parseResolution("2k") == QSize(2560, 1440));
+    CHECK(parseResolution("dci2k") == QSize(2048, 1080));
+    CHECK(parseResolution("1080p") == QSize(1920, 1080));
+    CHECK(parseResolution("3440x1440") == QSize(3440, 1440));
+    CHECK(parseResolution(" 1440 × 3200 ") == QSize(1440, 3200));
+    CHECK_FALSE(parseResolution("4"));
+    CHECK_FALSE(parseResolution("10x10"));
+    CHECK_FALSE(parseResolution("big"));
+    for (const ResolutionPreset& p : resolutionPresets()) {
+        CHECK(p.size.width() % 2 == 0);
+        CHECK(p.size.height() % 2 == 0);
+    }
+    CHECK(evenSize({1921, 1081}) == QSize(1922, 1082));
 }

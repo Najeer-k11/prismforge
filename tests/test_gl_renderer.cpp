@@ -2,6 +2,7 @@
 // They render into an offscreen framebuffer and inspect the pixels.
 
 #include "graph/GraphCodegen.h"
+#include "render/FrameSetup.h"
 #include "render/gl/GLRenderer.h"
 #include "render/OrbitCamera.h"
 
@@ -276,6 +277,47 @@ TEST_CASE("The default shader graph links and draws on the GPU", "[gl][graph]")
 
     const QImage img = renderOnce(s.renderer());
     CHECK(centre(img) != corner(img));
+}
+
+TEST_CASE("Offscreen render produces a full-size opaque image", "[gl][export]")
+{
+    RendererScope s;
+    REQUIRE(s.renderer().buildProgram({kSolidVertex, solidFragment("1.0, 0.5, 0.0")}).success);
+    s.renderer().setMesh(makeScreenQuad());
+
+    // A non-square size larger than any window, with MSAA.
+    const QSize size(2560, 1440);
+    QImage image;
+    QString error;
+    REQUIRE(s.renderer().renderToImage(makeFrameParams({}, PreviewMesh::Screen, size, 0.0f), 4, &image, &error));
+    CHECK(image.size() == size);
+    // The screen quad covers every pixel, corners included.
+    for (QPoint p : {QPoint(0, 0), QPoint(2559, 0), QPoint(0, 1439), QPoint(2559, 1439), QPoint(1280, 720)})
+        CHECK(image.pixel(p) == qRgb(255, 128, 0));
+    CHECK(qAlpha(image.pixel(10, 10)) == 255);
+
+    // Too large for the device: a clear error, no crash.
+    const QSize huge(s.renderer().maxRenderSize().width() + 1, 16);
+    CHECK_FALSE(s.renderer().renderToImage(makeFrameParams({}, PreviewMesh::Screen, huge, 0.0f), 0, &image, &error));
+    CHECK(error.contains("maximum render size"));
+}
+
+TEST_CASE("Offscreen render is top-down and respects the camera", "[gl][export]")
+{
+    RendererScope s;
+    // Red above the horizon (world y > 0), blue below.
+    const QString vertex = "#version 450 core\nlayout(location = 0) in vec3 aPosition;\n"
+                           "uniform mat4 uModel, uView, uProjection;\nout float vY;\n"
+                           "void main() { vY = aPosition.y; gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0); }\n";
+    const QString fragment = "#version 450 core\nin float vY;\nout vec4 c;\n"
+                             "void main() { c = vY > 0.0 ? vec4(1, 0, 0, 1) : vec4(0, 0, 1, 1); }\n";
+    REQUIRE(s.renderer().buildProgram({vertex, fragment}).success);
+    s.renderer().setMesh(makeScreenQuad());
+    QImage image;
+    QString error;
+    REQUIRE(s.renderer().renderToImage(makeFrameParams({}, PreviewMesh::Screen, {64, 64}, 0.0f), 0, &image, &error));
+    CHECK(image.pixel(32, 4) == qRgb(255, 0, 0));  // top row is up
+    CHECK(image.pixel(32, 60) == qRgb(0, 0, 255));
 }
 
 TEST_CASE("Nothing is drawn before any program is built", "[gl]")

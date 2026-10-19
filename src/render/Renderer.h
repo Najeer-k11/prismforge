@@ -5,6 +5,7 @@
 #include "render/Mesh.h"
 #include "shader/ShaderTypes.h"
 
+#include <QImage>
 #include <QMatrix4x4>
 #include <QSize>
 #include <QStringList>
@@ -76,7 +77,17 @@ public:
     virtual void setParameter(const QString& name, ParamType type, const ParamValue& value) = 0;
 
     virtual void setMesh(const MeshData& mesh) = 0;
+    // Renders into the currently bound framebuffer.
     virtual void renderFrame(const FrameParams& params) = 0;
+
+    // Renders one frame offscreen at params.framebufferSize with up to
+    // `samples` MSAA samples and returns it top row first, without alpha
+    // (RGBX8888). Targets are cached, so repeated calls at one size (video)
+    // allocate nothing. Restores the caller's framebuffer bindings.
+    virtual bool renderToImage(const FrameParams& params, int samples, QImage* image, QString* error) = 0;
+    // Largest size renderToImage() accepts on this device.
+    virtual QSize maxRenderSize() const = 0;
+    virtual int maxSamples() const = 0;
 
     virtual FrameStats lastFrameStats() const = 0;
     virtual RendererInfo info() const = 0;

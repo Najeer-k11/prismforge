@@ -3,6 +3,7 @@
 #include "app/DiagnosticsPanel.h"
 #include "app/LogPanel.h"
 #include "app/MaterialPanel.h"
+#include "app/VideoExportJob.h"
 #include "app/ViewportWidget.h"
 #include "diagnostics/Logging.h"
 #include "editor/CodeEditor.h"
@@ -20,6 +21,8 @@
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QImageWriter>
+#include <QProgressDialog>
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -268,6 +271,12 @@ void MainWindow::createActions()
     fileMenu->addSeparator();
     fileMenu->addAction(tr("&Export Material…"), QKeySequence(tr("Ctrl+E")), this,
                         [this] { exportMaterial({}, true); });
+    QAction* renderImageAction = fileMenu->addAction(tr("Render &Image…"), QKeySequence(tr("Ctrl+Shift+I")), this,
+                                                     &MainWindow::showRenderImageDialog);
+    renderImageAction->setToolTip(tr("Save a high-resolution frame (wallpapers up to 8K)"));
+    QAction* renderVideoAction = fileMenu->addAction(tr("Render &Video…"), QKeySequence(tr("Ctrl+Shift+V")), this,
+                                                     &MainWindow::showRenderVideoDialog);
+    renderVideoAction->setToolTip(tr("Render an animation to MP4, WebM, MOV or PNG frames"));
     fileMenu->addSeparator();
     fileMenu->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
 
@@ -309,7 +318,8 @@ void MainWindow::createActions()
 
     m_meshGroup = new QActionGroup(this);
     const std::pair<PreviewMesh, QString> meshes[] = {
-        {PreviewMesh::Sphere, tr("Sphere")}, {PreviewMesh::Plane, tr("Plane")}, {PreviewMesh::Cube, tr("Cube")}};
+        {PreviewMesh::Sphere, tr("Sphere")}, {PreviewMesh::Plane, tr("Plane")}, {PreviewMesh::Cube, tr("Cube")},
+        {PreviewMesh::Screen, tr("Screen")}};
     int shortcut = 1;
     for (const auto& [mesh, label] : meshes) {
         QAction* a = viewMenu->addAction(label);
@@ -332,10 +342,12 @@ void MainWindow::createActions()
     helpMenu->addAction(tr("&About PrismForge"), this, [this] {
         QMessageBox::about(this, tr("About PrismForge"),
                            tr("<b>PrismForge %1</b><br>GPU shader development environment.<br><br>"
-                              "Qt %2<br>glslang: %3")
+                              "Qt %2<br>glslang: %3<br>FFmpeg: %4")
                                .arg(QStringLiteral(PRISMFORGE_VERSION), QString::fromLatin1(qVersion()),
                                     GlslangValidator::isAvailable() ? GlslangValidator::versionString()
-                                                                    : tr("not available")));
+                                                                    : tr("not available"),
+                                    media::ffmpegVersion().isEmpty() ? tr("not available")
+                                                                     : media::ffmpegVersion()));
     });
 
     auto* toolbar = addToolBar(tr("Main"));
@@ -350,6 +362,11 @@ void MainWindow::createActions()
         toolbar->addAction(a);
     toolbar->addSeparator();
     toolbar->addAction(resetCamera);
+    toolbar->addSeparator();
+    renderImageAction->setText(tr("Render Image"));
+    renderVideoAction->setText(tr("Render Video"));
+    toolbar->addAction(renderImageAction);
+    toolbar->addAction(renderVideoAction);
 }
 
 void MainWindow::restoreLayout()
@@ -514,6 +531,16 @@ void MainWindow::finishCompile(bool success, const QList<Diagnostic>& compileDia
     qCInfo(lcShader).noquote() << summary;
     emit compileFinished(success);
 
+    if (success && m_pendingImage) {
+        QTimer::singleShot(300, this, [this, options = *std::exchange(m_pendingImage, std::nullopt)] {
+            QApplication::exit(renderImage(options, false) ? 0 : 1);
+        });
+    }
+    if (success && m_pendingVideo) {
+        QTimer::singleShot(300, this, [this, options = *std::exchange(m_pendingVideo, std::nullopt)] {
+            renderVideo(options, false);
+        });
+    }
     if (success && !m_pendingExportDir.isEmpty()) {
         // Let a few frames render so the preview image shows the material.
         QTimer::singleShot(500, this, [this, dir = std::exchange(m_pendingExportDir, {})] {
@@ -526,6 +553,130 @@ void MainWindow::finishCompile(bool success, const QList<Diagnostic>& compileDia
     }
     if (m_compileQueued)
         requestCompile();
+}
+
+void MainWindow::renderImageAfterFirstBuild(const ImageRenderOptions& options)
+{
+    m_pendingImage = options;
+}
+
+void MainWindow::renderVideoAfterFirstBuild(const VideoRenderOptions& options)
+{
+    m_pendingVideo = options;
+}
+
+QString MainWindow::suggestedOutputBase() const
+{
+    const QString dir = m_projectPath.isEmpty()
+                            ? QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)
+                            : QFileInfo(m_projectPath).absolutePath();
+    return QDir(dir).filePath(Exporter::sanitizeName(m_projectName));
+}
+
+void MainWindow::showRenderImageDialog()
+{
+    if (!m_lastGoodSources) {
+        QMessageBox::warning(this, tr("Render Image"), tr("No shader has compiled successfully yet."));
+        return;
+    }
+    RenderImageDialog dialog(m_viewport->maxRenderSize(), m_viewport->maxSamples(),
+                             suggestedOutputBase() + QStringLiteral(".png"), this);
+    if (dialog.exec() == QDialog::Accepted)
+        renderImage(dialog.options(), true);
+}
+
+bool MainWindow::renderImage(const ImageRenderOptions& options, bool interactive)
+{
+    auto report = [&](const QString& message) {
+        qCWarning(lcApp).noquote() << "Render image failed:" << message;
+        if (interactive)
+            QMessageBox::warning(this, tr("Render Image"), message);
+        return false;
+    };
+    const QByteArray format = QFileInfo(options.path).suffix().toLower().toLatin1();
+    if (!QImageWriter::supportedImageFormats().contains(format))
+        return report(tr("Unsupported image format '%1'. Use .png, .jpg or .webp.").arg(QString::fromLatin1(format)));
+    if (interactive && QFileInfo::exists(options.path) &&
+        QMessageBox::question(this, tr("Render Image"), tr("Overwrite %1?").arg(options.path)) != QMessageBox::Yes)
+        return false;
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    QImage image;
+    QString error;
+    const float time = options.useCurrentTime ? m_viewport->timeSeconds() : options.time;
+    const bool rendered = m_viewport->renderImage(options.size, options.samples, time, &image, &error);
+    QApplication::restoreOverrideCursor();
+    if (!rendered)
+        return report(error);
+
+    QImageWriter writer(options.path, format);
+    writer.setQuality(95);
+    if (!writer.write(image))
+        return report(writer.errorString());
+    const QString message = tr("Rendered %1 × %2 image to %3").arg(image.width()).arg(image.height()).arg(options.path);
+    qCInfo(lcApp).noquote() << message;
+    statusBar()->showMessage(message, 6000);
+    return true;
+}
+
+void MainWindow::showRenderVideoDialog()
+{
+    if (!m_lastGoodSources) {
+        QMessageBox::warning(this, tr("Render Video"), tr("No shader has compiled successfully yet."));
+        return;
+    }
+    if (m_videoRunning)
+        return;
+    RenderVideoDialog dialog(m_viewport->maxRenderSize(), m_viewport->maxSamples(), suggestedOutputBase(), this);
+    if (dialog.exec() == QDialog::Accepted) {
+        const VideoRenderOptions options = dialog.options();
+        if (QFileInfo::exists(options.video.path) && options.video.format != media::VideoFormat::PngSequence &&
+            QMessageBox::question(this, tr("Render Video"), tr("Overwrite %1?").arg(options.video.path))
+                != QMessageBox::Yes)
+            return;
+        renderVideo(options, true);
+    }
+}
+
+void MainWindow::renderVideo(const VideoRenderOptions& options, bool interactive)
+{
+    m_videoRunning = true;
+    auto* job = new VideoExportJob(m_viewport, options, m_viewport->camera(), this);
+    QProgressDialog* progress = nullptr;
+    if (interactive) {
+        progress = new QProgressDialog(tr("Preparing…"), tr("Cancel"), 0, job->totalFrames(), this);
+        progress->setWindowTitle(tr("Render Video"));
+        progress->setWindowModality(Qt::WindowModal);
+        progress->setMinimumDuration(0);
+        progress->setMinimumWidth(420);
+        connect(progress, &QProgressDialog::canceled, job, &VideoExportJob::cancel);
+    }
+    connect(job, &VideoExportJob::progress, this, [progress](int done, int total, double fps) {
+        if (!progress)
+            return;
+        const int remaining = fps > 0 ? int((total - done) / fps) : 0;
+        progress->setValue(done);
+        progress->setLabelText(tr("Frame %1 of %2  ·  %3 fps  ·  about %4:%5 left")
+                                   .arg(done).arg(total).arg(fps, 0, 'f', 1)
+                                   .arg(remaining / 60).arg(remaining % 60, 2, 10, QLatin1Char('0')));
+    });
+    connect(job, &VideoExportJob::finished, this, [this, job, progress, interactive, options](bool ok, const QString& message) {
+        m_videoRunning = false;
+        if (progress)
+            progress->deleteLater();
+        job->deleteLater();
+        const QString text = ok ? tr("%1 — %2").arg(message, options.video.path) : message;
+        if (ok)
+            qCInfo(lcApp).noquote() << text;
+        else
+            qCWarning(lcApp).noquote() << "Render video failed:" << text;
+        statusBar()->showMessage(text, 8000);
+        if (!interactive)
+            QApplication::exit(ok ? 0 : 1);
+        else if (!ok && message != tr("Cancelled"))
+            QMessageBox::warning(this, tr("Render Video"), text);
+    });
+    job->start();
 }
 
 void MainWindow::exportAfterFirstBuild(const QString& directory)

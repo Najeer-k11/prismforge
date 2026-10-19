@@ -1,0 +1,23 @@
+{
+    "formatVersion": 3,
+    "graph": {
+        "enabled": false,
+        "file": ""
+    },
+    "name": "wallpaper",
+    "parameters": {
+    },
+    "preview": {
+        "autoCompile": true,
+        "camera": {
+            "distance": 3.5,
+            "pitch": 20,
+            "yaw": 30
+        },
+        "mesh": "screen"
+    },
+    "shaders": {
+        "fragment": "wallpaper.frag",
+        "vertex": "wallpaper.vert"
+    }
+}

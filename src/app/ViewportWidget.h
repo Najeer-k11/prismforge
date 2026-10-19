@@ -33,6 +33,15 @@ public:
     OrbitCamera& camera() { return m_camera; }
     void resetCamera();
 
+    // Seconds since start; drives uTime in the preview.
+    float timeSeconds() const { return float(double(m_clock.nsecsElapsed()) / 1.0e9); }
+    // Renders one frame offscreen (any size, MSAA) with the current program,
+    // mesh and camera. `camera` overrides the viewport camera when given.
+    bool renderImage(QSize size, int samples, float timeSeconds, QImage* image, QString* error,
+                     const OrbitCamera* camera = nullptr);
+    QSize maxRenderSize() const;
+    int maxSamples() const;
+
     bool isRendererReady() const { return m_renderer != nullptr; }
     RendererInfo rendererInfo() const;
 
