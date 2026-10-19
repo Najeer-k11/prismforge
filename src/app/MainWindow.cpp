@@ -6,11 +6,13 @@
 #include "app/ViewportWidget.h"
 #include "diagnostics/Logging.h"
 #include "editor/CodeEditor.h"
+#include "project/Exporter.h"
 #include "graph/GraphCodegen.h"
 #include "grapheditor/GraphEditor.h"
 #include "shader/GlslangValidator.h"
 
 #include <QActionGroup>
+#include <QBuffer>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDesktopServices>
@@ -193,6 +195,9 @@ void MainWindow::createDocks()
     materialDock->setWidget(m_materialPanel);
     addDockWidget(Qt::LeftDockWidgetArea, materialDock);
     connect(m_materialPanel, &MaterialPanel::parameterChanged, this, [this](const MaterialParameter& p) {
+        for (MaterialParameter& active : m_activeParameters)
+            if (active.name == p.name)
+                active.value = p.value;
         m_parameterOverrides.insert(p.name, p);
         m_viewport->setParameter(p);
         setSettingsModified(true);
@@ -260,6 +265,9 @@ void MainWindow::createActions()
     fileMenu->addAction(tr("Save Shader"), QKeySequence(tr("Ctrl+Alt+S")), this,
                         [this] { saveShader(currentDocument(), false); });
     fileMenu->addAction(tr("Save Shader As…"), this, [this] { saveShader(currentDocument(), true); });
+    fileMenu->addSeparator();
+    fileMenu->addAction(tr("&Export Material…"), QKeySequence(tr("Ctrl+E")), this,
+                        [this] { exportMaterial({}, true); });
     fileMenu->addSeparator();
     fileMenu->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
 
@@ -381,6 +389,7 @@ void MainWindow::startCompile()
     m_compilingSources = currentSources();
     m_validationDiagnostics.clear();
     m_graphDiagnostics.clear();
+    m_compilingGraphJson.clear();
     m_statusCompile->setText(tr("Compiling…"));
 
     if (graphMode()) {
@@ -392,6 +401,7 @@ void MainWindow::startCompile()
         }
         m_graphDiagnostics = graphDiagnostics; // warnings only
         m_compilingSources.fragment = generated.source;
+        m_compilingGraphJson = m_graphEditor->graph().serialize();
         if (m_generatedEditor->toPlainText() != generated.source)
             m_generatedEditor->setPlainText(generated.source);
     }
@@ -442,6 +452,7 @@ void MainWindow::applyParameters(QList<MaterialParameter> parameters)
         }
     }
     m_materialPanel->setParameters(parameters);
+    m_activeParameters = parameters;
 }
 
 void MainWindow::setSettingsModified(bool modified)
@@ -461,6 +472,10 @@ bool MainWindow::hasUnsavedChanges() const
 void MainWindow::finishCompile(bool success, const QList<Diagnostic>& compileDiagnostics)
 {
     m_compileInFlight = false;
+    if (success) {
+        m_lastGoodSources = m_compilingSources;
+        m_lastGoodGraphJson = m_compilingGraphJson;
+    }
     const QList<Diagnostic> diagnostics = std::exchange(m_graphDiagnostics, {}) + compileDiagnostics;
     if (success)
         m_hasWorkingProgram = true;
@@ -499,12 +514,87 @@ void MainWindow::finishCompile(bool success, const QList<Diagnostic>& compileDia
     qCInfo(lcShader).noquote() << summary;
     emit compileFinished(success);
 
+    if (success && !m_pendingExportDir.isEmpty()) {
+        // Let a few frames render so the preview image shows the material.
+        QTimer::singleShot(500, this, [this, dir = std::exchange(m_pendingExportDir, {})] {
+            QApplication::exit(exportMaterial(dir, false) ? 0 : 1);
+        });
+    }
     if (success && !m_pendingSmokeFragment.isEmpty()) {
         document(ShaderStage::Fragment).editor->setPlainText(std::exchange(m_pendingSmokeFragment, {}));
         m_compileQueued = true;
     }
     if (m_compileQueued)
         requestCompile();
+}
+
+void MainWindow::exportAfterFirstBuild(const QString& directory)
+{
+    m_pendingExportDir = directory;
+}
+
+bool MainWindow::exportMaterial(QString directory, bool interactive)
+{
+    if (!m_lastGoodSources) {
+        const QString message = tr("Nothing to export: no shader has compiled successfully yet.");
+        if (interactive)
+            QMessageBox::warning(this, tr("Export"), message);
+        qCWarning(lcApp).noquote() << message;
+        return false;
+    }
+    if (interactive) {
+        const ShaderSources current = currentSources();
+        const bool stale = m_lastGoodGraphJson.isEmpty() == graphMode() ||
+                           (graphMode() ? m_graphEditor->graph().serialize() != m_lastGoodGraphJson
+                                        : current.fragment != m_lastGoodSources->fragment) ||
+                           current.vertex != m_lastGoodSources->vertex;
+        if (stale && QMessageBox::question(this, tr("Export"),
+                                           tr("The current sources differ from the last successful compile. "
+                                              "Export the last working shader (what the preview shows)?"))
+                         != QMessageBox::Yes)
+            return false;
+        const QString start = m_projectPath.isEmpty() ? QDir::homePath() : QFileInfo(m_projectPath).absolutePath();
+        directory = QFileDialog::getExistingDirectory(this, tr("Export Material To"), start);
+        if (directory.isEmpty())
+            return false;
+    }
+
+    ExportRequest request;
+    request.directory = directory;
+    request.name = m_projectName;
+    request.sources = *m_lastGoodSources;
+    request.parameters = m_activeParameters;
+    request.graphJson = m_lastGoodGraphJson;
+    {
+        const QImage preview = m_viewport->grabFramebuffer();
+        QBuffer buffer(&request.previewPng);
+        buffer.open(QIODevice::WriteOnly);
+        if (preview.isNull() || !preview.save(&buffer, "PNG"))
+            request.previewPng.clear();
+    }
+
+    if (interactive) {
+        QStringList existing;
+        for (const QString& f : Exporter::plannedFiles(request))
+            if (QFileInfo::exists(f))
+                existing << QFileInfo(f).fileName();
+        if (!existing.isEmpty() &&
+            QMessageBox::question(this, tr("Export"), tr("Overwrite existing files?\n\n%1").arg(existing.join(u'\n')))
+                != QMessageBox::Yes)
+            return false;
+    }
+
+    const ExportResult result = Exporter::exportMaterial(request);
+    if (!result.success) {
+        qCWarning(lcApp).noquote() << "Export failed:" << result.error;
+        if (interactive)
+            QMessageBox::warning(this, tr("Export failed"), result.error);
+        return false;
+    }
+    for (const QString& f : result.writtenFiles)
+        qCInfo(lcApp).noquote() << "Exported" << f;
+    statusBar()->showMessage(tr("Exported %n file(s) to %1", nullptr, int(result.writtenFiles.size())).arg(directory), 5000);
+    return true;
 }
 
 void MainWindow::enableGraphMode()

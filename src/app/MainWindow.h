@@ -40,6 +40,9 @@ public:
     // successfully; used by the --smoke-replace-fragment command line option.
     void replaceFragmentAfterFirstBuild(const QString& source);
     void enableGraphMode();
+    // Exports to `directory` after the first successful compile, then quits
+    // (exit code 0 on success). Used by the --export command line option.
+    void exportAfterFirstBuild(const QString& directory);
 
 signals:
     void compileFinished(bool success);
@@ -86,6 +89,8 @@ private:
     void applyParameters(QList<MaterialParameter> parameters);
 
     // Shader graph
+    bool exportMaterial(QString directory, bool interactive);
+
     bool graphMode() const;
     void setGraphMode(bool enabled);
     void reloadNodeLibraries();
@@ -114,6 +119,13 @@ private:
     graph::NodeRegistry m_registry;
     QString m_graphPath; // absolute; empty until saved
     QList<Diagnostic> m_graphDiagnostics; // codegen warnings for the compile in flight
+    QByteArray m_compilingGraphJson;      // graph that produced the sources in flight
+
+    // What is currently rendering (last successful compile), for export.
+    std::optional<ShaderSources> m_lastGoodSources;
+    QByteArray m_lastGoodGraphJson;
+    QList<MaterialParameter> m_activeParameters;
+    QString m_pendingExportDir;
     QLabel* m_statusCompile = nullptr;
     QLabel* m_statusFrame = nullptr;
 

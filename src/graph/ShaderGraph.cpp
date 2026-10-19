@@ -81,7 +81,8 @@ QJsonObject ShaderGraph::toJson() const
         keys.sort();
         for (const QString& key : keys) {
             const ParamValue& v = n.inputValues[key];
-            values.insert(key, QJsonArray{v[0], v[1], v[2], v[3]});
+            values.insert(key, QJsonArray{toJsonNumber(v[0]), toJsonNumber(v[1]), toJsonNumber(v[2]),
+                                          toJsonNumber(v[3])});
         }
         QJsonObject o{
             {"id", n.id},
@@ -94,9 +95,9 @@ QJsonObject ShaderGraph::toJson() const
         if (!n.parameterName.isEmpty())
             o.insert("parameterName", n.parameterName);
         if (n.rangeMin)
-            o.insert("rangeMin", double(*n.rangeMin));
+            o.insert("rangeMin", toJsonNumber(*n.rangeMin));
         if (n.rangeMax)
-            o.insert("rangeMax", double(*n.rangeMax));
+            o.insert("rangeMax", toJsonNumber(*n.rangeMax));
         nodes.append(o);
     }
 

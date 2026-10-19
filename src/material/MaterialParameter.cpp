@@ -82,13 +82,24 @@ QHash<QString, ParamHints> parseParameterHints(const QString& source)
     return hints;
 }
 
+double toJsonNumber(float value)
+{
+    // 9 significant digits always round-trip a float; try shorter first.
+    for (int precision = 1; precision < 9; ++precision) {
+        const double candidate = QString::number(double(value), 'g', precision).toDouble();
+        if (float(candidate) == value)
+            return candidate;
+    }
+    return double(value);
+}
+
 QJsonObject parameterValuesToJson(const QHash<QString, MaterialParameter>& values)
 {
     QJsonObject json;
     for (const MaterialParameter& p : values) {
         QJsonArray components;
         for (int i = 0; i < componentCount(p.type); ++i)
-            components.append(double(p.value[std::size_t(i)]));
+            components.append(toJsonNumber(p.value[std::size_t(i)]));
         json.insert(p.name, QJsonObject{{"type", toString(p.type)}, {"value", components}});
     }
     return json;

@@ -30,6 +30,10 @@ struct ParamHints {
 
 using ParamValue = std::array<float, 4>; // unused components are 0; int/bool stored as float
 
+// A float as the shortest double that round-trips to it (0.05f -> 0.05, not
+// 0.0500000007...). Keeps JSON files readable and diffs small.
+double toJsonNumber(float value);
+
 struct MaterialParameter {
     QString name;
     ParamType type = ParamType::Float;

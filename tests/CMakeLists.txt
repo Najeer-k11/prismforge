@@ -9,6 +9,7 @@ add_executable(pf_unit_tests
     test_material.cpp
     test_log_capture.cpp
     test_graph.cpp
+    test_exporter.cpp
 )
 target_link_libraries(pf_unit_tests PRIVATE pf_core pf_render pf_graph Catch2::Catch2WithMain)
 target_compile_definitions(pf_unit_tests PRIVATE

@@ -51,6 +51,16 @@ TEST_CASE("Parameter values round-trip through JSON", "[material]")
     CHECK(loaded["uEnabled"].value[0] == 1.0f);
 }
 
+TEST_CASE("JSON numbers are the shortest float round-trip", "[material]")
+{
+    CHECK(toJsonNumber(0.05f) == 0.05);
+    CHECK(toJsonNumber(0.18f) == 0.18);
+    CHECK(float(toJsonNumber(1.0f / 3.0f)) == 1.0f / 3.0f);
+    CHECK(float(toJsonNumber(123456.789f)) == 123456.789f);
+    for (float f : {0.1f, 1e-7f, 3.14159265f, -2.5f, 65504.0f})
+        CHECK(float(toJsonNumber(f)) == f);
+}
+
 TEST_CASE("Malformed parameter entries are skipped", "[material]")
 {
     const QJsonObject json{

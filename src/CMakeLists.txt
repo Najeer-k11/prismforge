@@ -14,6 +14,8 @@ add_library(pf_core STATIC
     project/Project.cpp
     material/MaterialParameter.h
     material/MaterialParameter.cpp
+    project/Exporter.h
+    project/Exporter.cpp
 )
 target_include_directories(pf_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(pf_core PUBLIC Qt6::Core)
