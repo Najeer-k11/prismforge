@@ -1,6 +1,7 @@
 // Integration tests that run the real OpenGL backend on the real GPU.
 // They render into an offscreen framebuffer and inspect the pixels.
 
+#include "graph/GraphCodegen.h"
 #include "render/gl/GLRenderer.h"
 #include "render/OrbitCamera.h"
 
@@ -223,6 +224,25 @@ TEST_CASE("Setting a parameter changes the rendered output", "[gl]")
     s.renderer.setParameter("uTint", ParamType::Float, {1.0f, 1.0f, 1.0f, 1.0f});
     s.renderer.setParameter("uMissing", ParamType::Vec3, {1.0f, 1.0f, 1.0f, 1.0f});
     CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 0, 255));
+}
+
+TEST_CASE("The default shader graph links and draws on the GPU", "[gl][graph]")
+{
+    RendererScope s;
+    const auto generated = graph::generateFragmentShader(graph::makeDefaultGraph(), graph::NodeRegistry::builtin());
+    REQUIRE(generated.success);
+    const auto result = s.renderer.buildProgram({readShader("default.vert"), generated.source});
+    for (const Diagnostic& d : result.diagnostics)
+        UNSCOPED_INFO(d.message.toStdString());
+    REQUIRE(result.success);
+
+    QStringList names;
+    for (const MaterialParameter& p : result.parameters)
+        names << p.name;
+    CHECK(names == QStringList{"uDeepColor", "uHighlightColor", "uRoughness"});
+
+    const QImage img = renderOnce(s.renderer);
+    CHECK(centre(img) != corner(img));
 }
 
 TEST_CASE("Nothing is drawn before any program is built", "[gl]")

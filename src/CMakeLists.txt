@@ -22,6 +22,25 @@ if(PRISMFORGE_HAVE_GLSLANG)
     target_link_libraries(pf_core PRIVATE glslang::glslang glslang::glslang-default-resource-limits)
 endif()
 
+# --- pf_graph: shader graph model, node library, GLSL code generation
+add_library(pf_graph STATIC
+    graph/GraphTypes.h
+    graph/GraphTypes.cpp
+    graph/NodeRegistry.h
+    graph/NodeRegistry.cpp
+    graph/ShaderGraph.h
+    graph/ShaderGraph.cpp
+    graph/GraphCodegen.h
+    graph/GraphCodegen.cpp
+)
+target_include_directories(pf_graph PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(pf_graph PUBLIC pf_core)
+qt_add_resources(pf_graph "node_library"
+    PREFIX "/"
+    BASE "${PROJECT_SOURCE_DIR}/resources"
+    FILES "${PROJECT_SOURCE_DIR}/resources/nodes/builtin.json"
+)
+
 # --- pf_render: renderer interface, meshes, camera, OpenGL backend
 add_library(pf_render STATIC
     render/Renderer.h

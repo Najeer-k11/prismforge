@@ -1,0 +1,1933 @@
+{
+  "formatVersion": 1,
+  "nodes": [
+    {
+      "id": "input.uv",
+      "title": "UV",
+      "category": "Input",
+      "description": "Mesh texture coordinates in [0, 1].",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec2",
+          "expr": "vUV",
+          "label": "UV"
+        }
+      ]
+    },
+    {
+      "id": "input.position",
+      "title": "World Position",
+      "category": "Input",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "vWorldPosition",
+          "label": "Position"
+        }
+      ]
+    },
+    {
+      "id": "input.normal",
+      "title": "World Normal",
+      "category": "Input",
+      "description": "Unit surface normal in world space.",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "normalize(vWorldNormal)",
+          "label": "Normal"
+        }
+      ]
+    },
+    {
+      "id": "input.view_dir",
+      "title": "View Direction",
+      "category": "Input",
+      "description": "Unit vector from the surface towards the camera.",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "normalize(uCameraPosition - vWorldPosition)",
+          "label": "View"
+        }
+      ]
+    },
+    {
+      "id": "input.time",
+      "title": "Time",
+      "category": "Input",
+      "description": "Seconds since PrismForge started.",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "uTime",
+          "label": "Seconds"
+        }
+      ]
+    },
+    {
+      "id": "input.screen_uv",
+      "title": "Screen UV",
+      "category": "Input",
+      "description": "Fragment position in [0, 1] viewport coordinates.",
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec2",
+          "expr": "gl_FragCoord.xy / uResolution",
+          "label": "UV"
+        }
+      ]
+    },
+    {
+      "id": "const.float",
+      "title": "Constant float",
+      "category": "Constant",
+      "inputs": [
+        {
+          "id": "value",
+          "type": "float",
+          "label": "Value",
+          "default": [
+            1.0
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "{value}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "const.vec2",
+      "title": "Constant vec2",
+      "category": "Constant",
+      "inputs": [
+        {
+          "id": "value",
+          "type": "vec2",
+          "label": "Value",
+          "default": [
+            0,
+            0
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec2",
+          "expr": "{value}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "const.vec3",
+      "title": "Constant vec3",
+      "category": "Constant",
+      "inputs": [
+        {
+          "id": "value",
+          "type": "vec3",
+          "label": "Value",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "{value}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "const.vec4",
+      "title": "Constant vec4",
+      "category": "Constant",
+      "inputs": [
+        {
+          "id": "value",
+          "type": "vec4",
+          "label": "Value",
+          "default": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec4",
+          "expr": "{value}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "const.color",
+      "title": "Colour",
+      "category": "Constant",
+      "inputs": [
+        {
+          "id": "value",
+          "type": "vec3",
+          "label": "Colour",
+          "default": [
+            0.8,
+            0.8,
+            0.8
+          ],
+          "connectable": false,
+          "color": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "{value}",
+          "label": "Colour"
+        }
+      ]
+    },
+    {
+      "id": "param.float",
+      "title": "Float Parameter",
+      "category": "Parameter",
+      "description": "Becomes a uniform editable in the Material panel.",
+      "role": "parameter",
+      "inputs": [
+        {
+          "id": "default",
+          "type": "float",
+          "label": "Default",
+          "default": [
+            0.5
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "value",
+          "type": "float",
+          "expr": "{name}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "param.vec2",
+      "title": "Vec2 Parameter",
+      "category": "Parameter",
+      "description": "Becomes a uniform editable in the Material panel.",
+      "role": "parameter",
+      "inputs": [
+        {
+          "id": "default",
+          "type": "vec2",
+          "label": "Default",
+          "default": [
+            0,
+            0
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "value",
+          "type": "vec2",
+          "expr": "{name}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "param.vec3",
+      "title": "Vec3 Parameter",
+      "category": "Parameter",
+      "description": "Becomes a uniform editable in the Material panel.",
+      "role": "parameter",
+      "inputs": [
+        {
+          "id": "default",
+          "type": "vec3",
+          "label": "Default",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "value",
+          "type": "vec3",
+          "expr": "{name}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "param.vec4",
+      "title": "Vec4 Parameter",
+      "category": "Parameter",
+      "description": "Becomes a uniform editable in the Material panel.",
+      "role": "parameter",
+      "inputs": [
+        {
+          "id": "default",
+          "type": "vec4",
+          "label": "Default",
+          "default": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "connectable": false
+        }
+      ],
+      "outputs": [
+        {
+          "id": "value",
+          "type": "vec4",
+          "expr": "{name}",
+          "label": "Value"
+        }
+      ]
+    },
+    {
+      "id": "param.color",
+      "title": "Colour Parameter",
+      "category": "Parameter",
+      "description": "Becomes a colour uniform editable in the Material panel.",
+      "role": "parameter",
+      "inputs": [
+        {
+          "id": "default",
+          "type": "vec3",
+          "label": "Default",
+          "default": [
+            0.8,
+            0.8,
+            0.8
+          ],
+          "connectable": false,
+          "color": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "value",
+          "type": "vec3",
+          "expr": "{name}",
+          "label": "Colour"
+        }
+      ]
+    },
+    {
+      "id": "math.add",
+      "title": "Add",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "{a} + {b}",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.subtract",
+      "title": "Subtract",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "{a} - {b}",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.multiply",
+      "title": "Multiply",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            1.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "{a} * {b}",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.divide",
+      "title": "Divide",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            1.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "{a} / {b}",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.power",
+      "title": "Power",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            1.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            2.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "pow({a}, {b})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.min",
+      "title": "Minimum",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "min({a}, {b})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.max",
+      "title": "Maximum",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "max({a}, {b})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.modulo",
+      "title": "Modulo",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "mod({a}, {b})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.step",
+      "title": "Step",
+      "category": "Math",
+      "description": "0 where B < A (edge), otherwise 1.",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.5
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "step({a}, {b})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.abs",
+      "title": "Absolute",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "abs({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.floor",
+      "title": "Floor",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "floor({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.ceil",
+      "title": "Ceiling",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "ceil({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.fract",
+      "title": "Fraction",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "fract({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.sqrt",
+      "title": "Square Root",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "sqrt({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.sin",
+      "title": "Sine",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "sin({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.cos",
+      "title": "Cosine",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "cos({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.negate",
+      "title": "Negate",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "-{x}",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.one_minus",
+      "title": "One Minus",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "1.0 - {x}",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.saturate",
+      "title": "Saturate",
+      "category": "Math",
+      "description": "Clamps to [0, 1].",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "clamp({x}, 0.0, 1.0)",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.clamp",
+      "title": "Clamp",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "lo",
+          "type": "T",
+          "label": "Min",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "hi",
+          "type": "T",
+          "label": "Max",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "clamp({x}, {lo}, {hi})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.lerp",
+      "title": "Lerp",
+      "category": "Math",
+      "description": "Linear interpolation: A when T = 0, B when T = 1.",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            1.0
+          ]
+        },
+        {
+          "id": "t",
+          "type": "float",
+          "label": "T",
+          "default": [
+            0.5
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "mix({a}, {b}, {t})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.smoothstep",
+      "title": "Smoothstep",
+      "category": "Math",
+      "inputs": [
+        {
+          "id": "e0",
+          "type": "float",
+          "label": "Edge 0",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "e1",
+          "type": "float",
+          "label": "Edge 1",
+          "default": [
+            1.0
+          ]
+        },
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.5
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "smoothstep({e0}, {e1}, {x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "math.remap",
+      "title": "Remap",
+      "category": "Math",
+      "description": "Maps X from [In min, In max] to [Out min, Out max].",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.5
+          ]
+        },
+        {
+          "id": "inMin",
+          "type": "float",
+          "label": "In min",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "inMax",
+          "type": "float",
+          "label": "In max",
+          "default": [
+            1.0
+          ]
+        },
+        {
+          "id": "outMin",
+          "type": "float",
+          "label": "Out min",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "outMax",
+          "type": "float",
+          "label": "Out max",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "{outMin} + ({x} - {inMin}) * (({outMax} - {outMin}) / ({inMax} - {inMin}))",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "vector.dot",
+      "title": "Dot Product",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "vec3",
+          "label": "A",
+          "default": [
+            0,
+            0,
+            1
+          ]
+        },
+        {
+          "id": "b",
+          "type": "vec3",
+          "label": "B",
+          "default": [
+            0,
+            0,
+            1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "dot({a}, {b})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "vector.cross",
+      "title": "Cross Product",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "vec3",
+          "label": "A",
+          "default": [
+            1,
+            0,
+            0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "vec3",
+          "label": "B",
+          "default": [
+            0,
+            1,
+            0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "cross({a}, {b})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "vector.length",
+      "title": "Length",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "length({x})",
+          "label": "Length"
+        }
+      ]
+    },
+    {
+      "id": "vector.distance",
+      "title": "Distance",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "T",
+          "label": "A",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "b",
+          "type": "T",
+          "label": "B",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "distance({a}, {b})",
+          "label": "Distance"
+        }
+      ]
+    },
+    {
+      "id": "vector.normalize",
+      "title": "Normalize",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "X",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "normalize({x})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "vector.reflect",
+      "title": "Reflect",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "dir",
+          "type": "vec3",
+          "label": "Incident",
+          "default": [
+            0,
+            0,
+            -1
+          ]
+        },
+        {
+          "id": "normal",
+          "type": "vec3",
+          "label": "Normal",
+          "default": [
+            0,
+            0,
+            1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "reflect({dir}, {normal})",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "vector.split",
+      "title": "Split",
+      "category": "Vector",
+      "description": "Separates a vector into components. Smaller vectors are padded (w = 1).",
+      "inputs": [
+        {
+          "id": "in",
+          "type": "vec4",
+          "label": "Vector",
+          "default": [
+            0,
+            0,
+            0,
+            1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "x",
+          "type": "float",
+          "expr": "{in}.x",
+          "label": "X"
+        },
+        {
+          "id": "y",
+          "type": "float",
+          "expr": "{in}.y",
+          "label": "Y"
+        },
+        {
+          "id": "z",
+          "type": "float",
+          "expr": "{in}.z",
+          "label": "Z"
+        },
+        {
+          "id": "w",
+          "type": "float",
+          "expr": "{in}.w",
+          "label": "W"
+        }
+      ]
+    },
+    {
+      "id": "vector.combine2",
+      "title": "Combine vec2",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "float",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "y",
+          "type": "float",
+          "label": "Y",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec2",
+          "expr": "vec2({x}, {y})",
+          "label": "Vector"
+        }
+      ]
+    },
+    {
+      "id": "vector.combine3",
+      "title": "Combine vec3",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "float",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "y",
+          "type": "float",
+          "label": "Y",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "z",
+          "type": "float",
+          "label": "Z",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "vec3({x}, {y}, {z})",
+          "label": "Vector"
+        }
+      ]
+    },
+    {
+      "id": "vector.combine4",
+      "title": "Combine vec4",
+      "category": "Vector",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "float",
+          "label": "X",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "y",
+          "type": "float",
+          "label": "Y",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "z",
+          "type": "float",
+          "label": "Z",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "w",
+          "type": "float",
+          "label": "W",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec4",
+          "expr": "vec4({x}, {y}, {z}, {w})",
+          "label": "Vector"
+        }
+      ]
+    },
+    {
+      "id": "color.luminance",
+      "title": "Luminance",
+      "category": "Colour",
+      "description": "Rec. 709 relative luminance.",
+      "inputs": [
+        {
+          "id": "rgb",
+          "type": "vec3",
+          "label": "Colour",
+          "default": [
+            1,
+            1,
+            1
+          ],
+          "color": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "dot({rgb}, vec3(0.2126, 0.7152, 0.0722))",
+          "label": "Luminance"
+        }
+      ]
+    },
+    {
+      "id": "color.hsv_to_rgb",
+      "title": "HSV to RGB",
+      "category": "Colour",
+      "description": "Hue, saturation and value in [0, 1].",
+      "inputs": [
+        {
+          "id": "hsv",
+          "type": "vec3",
+          "label": "HSV",
+          "default": [
+            0,
+            1,
+            1
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "pf_hsvToRgb({hsv})",
+          "label": "RGB"
+        }
+      ],
+      "functions": "vec3 pf_hsvToRgb(vec3 c)\n{\n    vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);\n    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);\n}"
+    },
+    {
+      "id": "color.rgb_to_hsv",
+      "title": "RGB to HSV",
+      "category": "Colour",
+      "inputs": [
+        {
+          "id": "rgb",
+          "type": "vec3",
+          "label": "RGB",
+          "default": [
+            1,
+            0,
+            0
+          ],
+          "color": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "pf_rgbToHsv({rgb})",
+          "label": "HSV"
+        }
+      ],
+      "functions": "vec3 pf_rgbToHsv(vec3 c)\n{\n    vec4 k = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, k.wz), vec4(c.gb, k.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n    float d = q.x - min(q.w, q.y);\n    float e = 1.0e-10;\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);\n}"
+    },
+    {
+      "id": "color.contrast",
+      "title": "Contrast",
+      "category": "Colour",
+      "inputs": [
+        {
+          "id": "rgb",
+          "type": "vec3",
+          "label": "Colour",
+          "default": [
+            0.5,
+            0.5,
+            0.5
+          ],
+          "color": true
+        },
+        {
+          "id": "amount",
+          "type": "float",
+          "label": "Contrast",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec3",
+          "expr": "({rgb} - 0.5) * {amount} + 0.5",
+          "label": "Colour"
+        }
+      ]
+    },
+    {
+      "id": "color.posterize",
+      "title": "Posterize",
+      "category": "Colour",
+      "inputs": [
+        {
+          "id": "x",
+          "type": "T",
+          "label": "In",
+          "default": [
+            0.5
+          ]
+        },
+        {
+          "id": "steps",
+          "type": "float",
+          "label": "Steps",
+          "default": [
+            4.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "T",
+          "expr": "floor({x} * {steps}) / {steps}",
+          "label": "Result"
+        }
+      ]
+    },
+    {
+      "id": "uv.tiling_offset",
+      "title": "Tiling and Offset",
+      "category": "UV",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "tiling",
+          "type": "vec2",
+          "label": "Tiling",
+          "default": [
+            1,
+            1
+          ]
+        },
+        {
+          "id": "offset",
+          "type": "vec2",
+          "label": "Offset",
+          "default": [
+            0,
+            0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec2",
+          "expr": "{uv} * {tiling} + {offset}",
+          "label": "UV"
+        }
+      ]
+    },
+    {
+      "id": "uv.rotate",
+      "title": "Rotate UV",
+      "category": "UV",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "center",
+          "type": "vec2",
+          "label": "Centre",
+          "default": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "id": "angle",
+          "type": "float",
+          "label": "Angle (rad)",
+          "default": [
+            0.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec2",
+          "expr": "pf_rotateUV({uv}, {center}, {angle})",
+          "label": "UV"
+        }
+      ],
+      "functions": "vec2 pf_rotateUV(vec2 uv, vec2 center, float angle)\n{\n    float s = sin(angle);\n    float c = cos(angle);\n    uv -= center;\n    return vec2(c * uv.x - s * uv.y, s * uv.x + c * uv.y) + center;\n}"
+    },
+    {
+      "id": "uv.polar",
+      "title": "Polar Coordinates",
+      "category": "UV",
+      "description": "x = distance from centre (x2), y = angle in [0, 1].",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "center",
+          "type": "vec2",
+          "label": "Centre",
+          "default": [
+            0.5,
+            0.5
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "vec2",
+          "expr": "pf_polarUV({uv}, {center})",
+          "label": "Radius/Angle"
+        }
+      ],
+      "functions": "vec2 pf_polarUV(vec2 uv, vec2 center)\n{\n    vec2 d = uv - center;\n    return vec2(length(d) * 2.0, atan(d.y, d.x) / 6.28318530718 + 0.5);\n}"
+    },
+    {
+      "id": "uv.checker",
+      "title": "Checkerboard",
+      "category": "UV",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "scale",
+          "type": "float",
+          "label": "Scale",
+          "default": [
+            8.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pf_checker({uv}, {scale})",
+          "label": "Mask"
+        }
+      ],
+      "functions": "float pf_checker(vec2 uv, float scale)\n{\n    vec2 cell = floor(uv * scale);\n    return mod(cell.x + cell.y, 2.0);\n}"
+    },
+    {
+      "id": "noise.value",
+      "title": "Value Noise",
+      "category": "Noise",
+      "description": "Smooth value noise in [0, 1].",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "scale",
+          "type": "float",
+          "label": "Scale",
+          "default": [
+            8.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pf_valueNoise({uv} * {scale})",
+          "label": "Noise"
+        }
+      ],
+      "functions": "float pf_valueHash(vec2 p)\n{\n    p = fract(p * vec2(123.34, 456.21));\n    p += dot(p, p + 45.32);\n    return fract(p.x * p.y);\n}\n\nfloat pf_valueNoise(vec2 p)\n{\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = pf_valueHash(i);\n    float b = pf_valueHash(i + vec2(1.0, 0.0));\n    float c = pf_valueHash(i + vec2(0.0, 1.0));\n    float d = pf_valueHash(i + vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}"
+    },
+    {
+      "id": "noise.gradient",
+      "title": "Gradient Noise",
+      "category": "Noise",
+      "description": "Perlin-style gradient noise in roughly [0, 1].",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "scale",
+          "type": "float",
+          "label": "Scale",
+          "default": [
+            8.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pf_gradientNoise({uv} * {scale}) * 0.5 + 0.5",
+          "label": "Noise"
+        }
+      ],
+      "functions": "vec2 pf_gradientDir(vec2 p)\n{\n    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));\n    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);\n}\n\nfloat pf_gradientNoise(vec2 p)\n{\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = dot(pf_gradientDir(i), f);\n    float b = dot(pf_gradientDir(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));\n    float c = dot(pf_gradientDir(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));\n    float d = dot(pf_gradientDir(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}"
+    },
+    {
+      "id": "noise.fbm",
+      "title": "Fractal Noise",
+      "category": "Noise",
+      "description": "Fractal Brownian motion: summed gradient noise octaves (1-10).",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "scale",
+          "type": "float",
+          "label": "Scale",
+          "default": [
+            4.0
+          ]
+        },
+        {
+          "id": "octaves",
+          "type": "float",
+          "label": "Octaves",
+          "default": [
+            5.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pf_fbm({uv} * {scale}, {octaves})",
+          "label": "Noise"
+        }
+      ],
+      "functions": "vec2 pf_fbmDir(vec2 p)\n{\n    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));\n    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);\n}\n\nfloat pf_fbmNoise(vec2 p)\n{\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    vec2 u = f * f * (3.0 - 2.0 * f);\n    float a = dot(pf_fbmDir(i), f);\n    float b = dot(pf_fbmDir(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));\n    float c = dot(pf_fbmDir(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));\n    float d = dot(pf_fbmDir(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));\n    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);\n}\n\nfloat pf_fbm(vec2 p, float octaves)\n{\n    int count = int(clamp(octaves, 1.0, 10.0));\n    float sum = 0.0;\n    float amplitude = 0.5;\n    float norm = 0.0;\n    for (int k = 0; k < 10; ++k) {\n        if (k >= count)\n            break;\n        sum += amplitude * pf_fbmNoise(p);\n        norm += amplitude;\n        p = p * 2.0 + vec2(17.0, 9.0);\n        amplitude *= 0.5;\n    }\n    return sum / norm * 0.5 + 0.5;\n}"
+    },
+    {
+      "id": "noise.voronoi",
+      "title": "Voronoi",
+      "category": "Noise",
+      "description": "Distance to the nearest cell point.",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        },
+        {
+          "id": "scale",
+          "type": "float",
+          "label": "Scale",
+          "default": [
+            8.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pf_voronoi({uv} * {scale})",
+          "label": "Distance"
+        }
+      ],
+      "functions": "vec2 pf_voronoiHash(vec2 p)\n{\n    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));\n    return fract(sin(p) * 43758.5453);\n}\n\nfloat pf_voronoi(vec2 p)\n{\n    vec2 i = floor(p);\n    vec2 f = fract(p);\n    float d = 8.0;\n    for (int y = -1; y <= 1; ++y) {\n        for (int x = -1; x <= 1; ++x) {\n            vec2 g = vec2(float(x), float(y));\n            d = min(d, length(g + pf_voronoiHash(i + g) - f));\n        }\n    }\n    return d;\n}"
+    },
+    {
+      "id": "material.fresnel",
+      "title": "Fresnel",
+      "category": "Material",
+      "description": "Rim factor: 1 at grazing angles, 0 facing the camera.",
+      "inputs": [
+        {
+          "id": "normal",
+          "type": "vec3",
+          "label": "Normal",
+          "defaultExpr": "normalize(vWorldNormal)"
+        },
+        {
+          "id": "view",
+          "type": "vec3",
+          "label": "View",
+          "defaultExpr": "normalize(uCameraPosition - vWorldPosition)"
+        },
+        {
+          "id": "power",
+          "type": "float",
+          "label": "Power",
+          "default": [
+            5.0
+          ]
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "float",
+          "expr": "pow(1.0 - max(dot({normal}, {view}), 0.0), {power})",
+          "label": "Fresnel"
+        }
+      ]
+    },
+    {
+      "id": "output.surface",
+      "title": "Surface Output",
+      "category": "Output",
+      "description": "Physically based surface lit by two fixed preview lights.",
+      "role": "output",
+      "inputs": [
+        {
+          "id": "baseColor",
+          "type": "vec3",
+          "label": "Base colour",
+          "default": [
+            0.8,
+            0.8,
+            0.8
+          ],
+          "color": true
+        },
+        {
+          "id": "roughness",
+          "type": "float",
+          "label": "Roughness",
+          "default": [
+            0.5
+          ]
+        },
+        {
+          "id": "metallic",
+          "type": "float",
+          "label": "Metallic",
+          "default": [
+            0.0
+          ]
+        },
+        {
+          "id": "emission",
+          "type": "vec3",
+          "label": "Emission",
+          "default": [
+            0,
+            0,
+            0
+          ],
+          "color": true
+        },
+        {
+          "id": "alpha",
+          "type": "float",
+          "label": "Alpha",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [],
+      "functions": "vec4 pf_shadeSurface(vec3 baseColor, float roughness, float metallic, vec3 emission, float alpha)\n{\n    const float pi = 3.14159265;\n    vec3 n = normalize(vWorldNormal);\n    vec3 v = normalize(uCameraPosition - vWorldPosition);\n    float r = clamp(roughness, 0.04, 1.0);\n    float a2 = r * r * r * r;\n    float m = clamp(metallic, 0.0, 1.0);\n    vec3 f0 = mix(vec3(0.04), baseColor, m);\n    vec3 diffuseColor = baseColor * (1.0 - m);\n    vec3 lightDirs[2] = vec3[2](normalize(vec3(0.6, 0.8, 0.4)), normalize(vec3(-0.7, 0.2, -0.5)));\n    vec3 lightColors[2] = vec3[2](vec3(1.0, 0.97, 0.92) * 4.0, vec3(0.35, 0.45, 0.6) * 1.5);\n    vec3 color = diffuseColor * 0.08 + f0 * 0.04;\n    for (int i = 0; i < 2; ++i) {\n        vec3 l = lightDirs[i];\n        vec3 h = normalize(l + v);\n        float nl = max(dot(n, l), 0.0);\n        float nh = max(dot(n, h), 0.0);\n        float nv = max(dot(n, v), 1.0e-4);\n        float vh = max(dot(v, h), 0.0);\n        float dd = nh * nh * (a2 - 1.0) + 1.0;\n        float d = a2 / (pi * dd * dd);\n        float k = (r + 1.0) * (r + 1.0) / 8.0;\n        float g = (nl / (nl * (1.0 - k) + k)) * (nv / (nv * (1.0 - k) + k));\n        vec3 f = f0 + (1.0 - f0) * pow(1.0 - vh, 5.0);\n        vec3 specular = d * g * f / max(4.0 * nl * nv, 1.0e-4);\n        color += ((1.0 - f) * diffuseColor / pi + specular) * lightColors[i] * nl;\n    }\n    color += emission;\n    color = color / (1.0 + color);\n    return vec4(pow(color, vec3(1.0 / 2.2)), clamp(alpha, 0.0, 1.0));\n}",
+      "main": "fragColor = pf_shadeSurface({baseColor}, {roughness}, {metallic}, {emission}, {alpha});"
+    },
+    {
+      "id": "output.unlit",
+      "title": "Unlit Output",
+      "category": "Output",
+      "description": "Writes the colour directly (gamma-encoded), without lighting.",
+      "role": "output",
+      "inputs": [
+        {
+          "id": "color",
+          "type": "vec3",
+          "label": "Colour",
+          "default": [
+            1,
+            1,
+            1
+          ],
+          "color": true
+        },
+        {
+          "id": "alpha",
+          "type": "float",
+          "label": "Alpha",
+          "default": [
+            1.0
+          ]
+        }
+      ],
+      "outputs": [],
+      "main": "fragColor = vec4(pow(max({color}, vec3(0.0)), vec3(1.0 / 2.2)), clamp({alpha}, 0.0, 1.0));"
+    }
+  ]
+}
