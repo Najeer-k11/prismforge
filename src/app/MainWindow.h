@@ -14,6 +14,7 @@ class QActionGroup;
 class QLabel;
 class QTabWidget;
 class QTimer;
+class QTreeWidget;
 
 namespace pf {
 
@@ -91,6 +92,7 @@ private:
     bool m_settingsModified = false; // project state outside the shader buffers
     QLabel* m_rendererLabel = nullptr;
     QLabel* m_statsLabel = nullptr;
+    QTreeWidget* m_capabilities = nullptr;
     QLabel* m_statusCompile = nullptr;
     QLabel* m_statusFrame = nullptr;
 

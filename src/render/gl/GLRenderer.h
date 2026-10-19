@@ -91,6 +91,7 @@ private:
 
     QList<MaterialParameter> introspectParameters(GLuint program, QList<Diagnostic>& diagnostics,
                                                   QHash<QString, ParameterSlot>& slotTable);
+    void queryCapabilities(const QSurfaceFormat& format, GLint timerBits);
     GlName compileStage(ShaderStage stage, const QString& source, QList<Diagnostic>& diagnostics);
     void collectGpuTimings();
 

@@ -1,5 +1,6 @@
 #include "app/MainWindow.h"
 #include "app/Theme.h"
+#include "diagnostics/LogCapture.h"
 #include "diagnostics/Logging.h"
 
 #include <QApplication>
@@ -8,8 +9,17 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 
+#include <algorithm>
+#include <cstring>
+
 int main(int argc, char* argv[])
 {
+    pf::LogCapture::install();
+
+    // Parsed before QApplication: the surface format must be set first.
+    const bool glDebug = std::any_of(argv + 1, argv + argc,
+                                     [](const char* a) { return std::strcmp(a, "--gl-debug") == 0; });
+
     // The context format must be set before the application object exists.
     QSurfaceFormat format;
     format.setRenderableType(QSurfaceFormat::OpenGL);
@@ -18,6 +28,8 @@ int main(int argc, char* argv[])
     format.setDepthBufferSize(24);
     format.setSamples(4);
     format.setSwapInterval(1);
+    if (glDebug)
+        format.setOption(QSurfaceFormat::DebugContext);
     QSurfaceFormat::setDefaultFormat(format);
 
     QApplication app(argc, argv);
@@ -42,7 +54,10 @@ int main(int argc, char* argv[])
         QStringLiteral("After the first successful compile, replace the fragment shader with the "
                        "contents of <file> and compile again (for scripted testing)."),
         QStringLiteral("file"));
-    parser.addOptions({screenshotOption, delayOption, smokeOption});
+    const QCommandLineOption glDebugOption(
+        QStringLiteral("gl-debug"),
+        QStringLiteral("Create an OpenGL debug context and show driver messages in the Log panel."));
+    parser.addOptions({screenshotOption, delayOption, smokeOption, glDebugOption});
     parser.process(app);
 
     pf::applyTheme(app);

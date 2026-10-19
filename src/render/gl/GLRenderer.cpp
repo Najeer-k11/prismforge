@@ -93,6 +93,7 @@ bool GLRenderer::initialize(QString* error)
     GLint timerBits = 0;
     m_gl->glGetQueryiv(GL_TIME_ELAPSED, GL_QUERY_COUNTER_BITS, &timerBits);
     m_info.gpuTimerQueries = timerBits > 0;
+    queryCapabilities(fmt, timerBits);
     if (m_info.gpuTimerQueries)
         m_gl->glCreateQueries(GL_TIME_ELAPSED, kTimerQueries, m_timerQueries.data());
     else
@@ -121,6 +122,64 @@ bool GLRenderer::initialize(QString* error)
 
     qCInfo(lcRender).noquote() << "OpenGL" << m_info.version << "|" << m_info.device;
     return true;
+}
+
+void GLRenderer::queryCapabilities(const QSurfaceFormat& format, GLint timerBits)
+{
+    auto integer = [this](GLenum name) {
+        GLint v = 0;
+        m_gl->glGetIntegerv(name, &v);
+        return QString::number(v);
+    };
+    auto add = [this](const QString& name, const QString& value) {
+        m_info.capabilities.append({name, value});
+    };
+
+    GLint flags = 0;
+    m_gl->glGetIntegerv(GL_CONTEXT_FLAGS, &flags);
+    QStringList flagNames;
+    if (flags & GL_CONTEXT_FLAG_DEBUG_BIT)
+        flagNames << QStringLiteral("debug");
+    if (flags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT)
+        flagNames << QStringLiteral("forward-compatible");
+    if (flags & GL_CONTEXT_FLAG_ROBUST_ACCESS_BIT)
+        flagNames << QStringLiteral("robust");
+
+    add(QStringLiteral("Context"),
+        QStringLiteral("%1.%2 %3").arg(format.majorVersion()).arg(format.minorVersion())
+            .arg(format.profile() == QSurfaceFormat::CoreProfile ? QStringLiteral("core")
+                                                                 : QStringLiteral("compatibility")));
+    add(QStringLiteral("Context flags"), flagNames.isEmpty() ? QStringLiteral("none") : flagNames.join(", "));
+    add(QStringLiteral("Default framebuffer MSAA"), QString::number(std::max(format.samples(), 0)));
+    add(QStringLiteral("Timer query bits"), QString::number(timerBits));
+    add(QStringLiteral("Max texture size"), integer(GL_MAX_TEXTURE_SIZE));
+    add(QStringLiteral("Max 3D texture size"), integer(GL_MAX_3D_TEXTURE_SIZE));
+    add(QStringLiteral("Max cube map size"), integer(GL_MAX_CUBE_MAP_TEXTURE_SIZE));
+    add(QStringLiteral("Max array texture layers"), integer(GL_MAX_ARRAY_TEXTURE_LAYERS));
+    add(QStringLiteral("Max texture image units (combined)"), integer(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS));
+    add(QStringLiteral("Max vertex attributes"), integer(GL_MAX_VERTEX_ATTRIBS));
+    add(QStringLiteral("Max vertex uniform components"), integer(GL_MAX_VERTEX_UNIFORM_COMPONENTS));
+    add(QStringLiteral("Max fragment uniform components"), integer(GL_MAX_FRAGMENT_UNIFORM_COMPONENTS));
+    add(QStringLiteral("Max uniform block size"), integer(GL_MAX_UNIFORM_BLOCK_SIZE));
+    add(QStringLiteral("Max varying components"), integer(GL_MAX_VARYING_COMPONENTS));
+    add(QStringLiteral("Max draw buffers"), integer(GL_MAX_DRAW_BUFFERS));
+    add(QStringLiteral("Max colour attachments"), integer(GL_MAX_COLOR_ATTACHMENTS));
+    add(QStringLiteral("Max samples"), integer(GL_MAX_SAMPLES));
+    add(QStringLiteral("Max renderbuffer size"), integer(GL_MAX_RENDERBUFFER_SIZE));
+    add(QStringLiteral("Max viewport dims"), [this] {
+        GLint dims[2] = {};
+        m_gl->glGetIntegerv(GL_MAX_VIEWPORT_DIMS, dims);
+        return QStringLiteral("%1 × %2").arg(dims[0]).arg(dims[1]);
+    }());
+    add(QStringLiteral("Max compute invocations / group"), integer(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS));
+    add(QStringLiteral("Max shader storage block size"), integer(GL_MAX_SHADER_STORAGE_BLOCK_SIZE));
+
+    GLint extensionCount = 0;
+    m_gl->glGetIntegerv(GL_NUM_EXTENSIONS, &extensionCount);
+    for (GLint i = 0; i < extensionCount; ++i)
+        m_info.extensions << QString::fromLatin1(
+            reinterpret_cast<const char*>(m_gl->glGetStringi(GL_EXTENSIONS, GLuint(i))));
+    m_info.extensions.sort();
 }
 
 void GLRenderer::shutdown()

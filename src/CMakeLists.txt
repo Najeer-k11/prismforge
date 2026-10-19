@@ -4,6 +4,8 @@ add_library(pf_core STATIC
     diagnostics/Diagnostic.cpp
     diagnostics/Logging.h
     diagnostics/Logging.cpp
+    diagnostics/LogCapture.h
+    diagnostics/LogCapture.cpp
     shader/ShaderTypes.h
     shader/ShaderTypes.cpp
     shader/GlslangValidator.h
@@ -54,6 +56,8 @@ qt_add_executable(prismforge
     app/DiagnosticsPanel.cpp
     app/MaterialPanel.h
     app/MaterialPanel.cpp
+    app/LogPanel.h
+    app/LogPanel.cpp
     app/Theme.h
     app/Theme.cpp
 )

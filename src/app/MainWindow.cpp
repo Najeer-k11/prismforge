@@ -1,6 +1,7 @@
 #include "app/MainWindow.h"
 
 #include "app/DiagnosticsPanel.h"
+#include "app/LogPanel.h"
 #include "app/MaterialPanel.h"
 #include "app/ViewportWidget.h"
 #include "diagnostics/Logging.h"
@@ -24,6 +25,8 @@
 #include <QTabWidget>
 #include <QTimer>
 #include <QToolBar>
+#include <QTreeWidget>
+#include <QHeaderView>
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
@@ -177,15 +180,31 @@ void MainWindow::createDocks()
         l->setAlignment(Qt::AlignTop | Qt::AlignLeft);
         infoLayout->addWidget(l);
     }
-    infoLayout->addStretch();
+    m_capabilities = new QTreeWidget(this);
+    m_capabilities->setColumnCount(2);
+    m_capabilities->setHeaderLabels({tr("Capability"), tr("Value")});
+    m_capabilities->setFrameShape(QFrame::NoFrame);
+    m_capabilities->setUniformRowHeights(true);
+    m_capabilities->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     auto* infoDock = new QDockWidget(tr("Renderer"), this);
     infoDock->setObjectName("RendererDock");
     infoDock->setWidget(infoWidget);
     addDockWidget(Qt::BottomDockWidgetArea, infoDock);
     splitDockWidget(diagDock, infoDock, Qt::Horizontal);
 
+    auto* logDock = new QDockWidget(tr("Log"), this);
+    logDock->setObjectName("LogDock");
+    logDock->setWidget(new LogPanel(logDock));
+    tabifyDockWidget(diagDock, logDock);
+
+    auto* capsDock = new QDockWidget(tr("GPU Capabilities"), this);
+    capsDock->setObjectName("CapabilitiesDock");
+    capsDock->setWidget(m_capabilities);
+    tabifyDockWidget(diagDock, capsDock);
+    diagDock->raise();
+
     resizeDocks({editorDock}, {560}, Qt::Horizontal);
-    resizeDocks({diagDock}, {200}, Qt::Vertical);
+    resizeDocks({diagDock}, {240}, Qt::Vertical);
     resizeDocks({diagDock, infoDock}, {700, 300}, Qt::Horizontal);
 }
 
@@ -707,6 +726,14 @@ void MainWindow::showRendererInfo(const RendererInfo& info)
     for (const QString& note : info.notes)
         html += QStringLiteral("<p style='color:#d8a64a'>%1</p>").arg(note.toHtmlEscaped());
     m_rendererLabel->setText(html);
+
+    m_capabilities->clear();
+    for (const auto& [name, value] : info.capabilities)
+        new QTreeWidgetItem(m_capabilities, {name, value});
+    auto* extensions = new QTreeWidgetItem(
+        m_capabilities, {tr("Extensions"), QString::number(info.extensions.size())});
+    for (const QString& extension : info.extensions)
+        new QTreeWidgetItem(extensions, {extension, QString()});
 }
 
 void MainWindow::showStats(double frameIntervalMs, const FrameStats& stats)

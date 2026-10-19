@@ -4,6 +4,7 @@
 #include "render/gl/GLRenderer.h"
 
 #include <QMouseEvent>
+#include <QOpenGLDebugLogger>
 #include <QOpenGLContext>
 #include <QWheelEvent>
 
@@ -32,6 +33,7 @@ void ViewportWidget::releaseRenderer()
     makeCurrent();
     m_renderer->shutdown();
     m_renderer.reset();
+    delete std::exchange(m_debugLogger, nullptr);
     doneCurrent();
 }
 
@@ -57,6 +59,27 @@ void ViewportWidget::initializeGL()
     }
     m_renderer = std::move(renderer);
     m_meshDirty = true;
+
+    if (context()->format().testOption(QSurfaceFormat::DebugContext)) {
+        m_debugLogger = new QOpenGLDebugLogger(this);
+        if (m_debugLogger->initialize()) {
+            connect(m_debugLogger, &QOpenGLDebugLogger::messageLogged, this,
+                    [](const QOpenGLDebugMessage& m) {
+                        const QString text = QStringLiteral("GL debug [%1]: %2").arg(m.id()).arg(m.message());
+                        if (m.severity() == QOpenGLDebugMessage::HighSeverity)
+                            qCCritical(lcRender).noquote() << text;
+                        else if (m.severity() == QOpenGLDebugMessage::MediumSeverity)
+                            qCWarning(lcRender).noquote() << text;
+                        else
+                            qCDebug(lcRender).noquote() << text;
+                    });
+            m_debugLogger->startLogging(QOpenGLDebugLogger::SynchronousLogging);
+            qCInfo(lcRender) << "OpenGL debug output enabled";
+        } else {
+            qCWarning(lcRender) << "Debug context requested but GL_KHR_debug is unavailable";
+            delete std::exchange(m_debugLogger, nullptr);
+        }
+    }
     emit rendererReady(m_renderer->info());
 
     if (m_pendingSources) {

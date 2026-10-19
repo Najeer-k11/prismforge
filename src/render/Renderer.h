@@ -50,6 +50,9 @@ struct RendererInfo {
     QString shadingLanguageVersion;
     bool gpuTimerQueries = false;
     QStringList notes;
+    // Implementation limits, as (name, value) pairs in display order.
+    QList<std::pair<QString, QString>> capabilities;
+    QStringList extensions;
 };
 
 // Graphics-API-neutral interface used by the viewport. All methods must be

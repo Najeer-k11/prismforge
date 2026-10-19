@@ -6,6 +6,8 @@
 #include <QElapsedTimer>
 #include <QOpenGLWidget>
 
+class QOpenGLDebugLogger;
+
 #include <memory>
 #include <optional>
 
@@ -53,6 +55,7 @@ private:
     ProgramBuildResult buildNow(const ShaderSources& sources);
 
     std::unique_ptr<Renderer> m_renderer;
+    QOpenGLDebugLogger* m_debugLogger = nullptr; // only with --gl-debug
     std::optional<ShaderSources> m_pendingSources;
     std::optional<ShaderSources> m_activeSources; // last successfully linked
     PreviewMesh m_mesh = PreviewMesh::Sphere;
