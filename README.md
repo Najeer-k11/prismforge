@@ -19,13 +19,18 @@ pipeline, the shader interface, the graph language and file formats.
 | **Diagnostics** | Errors with stage/line/column from glslang, Mesa, NVIDIA and AMD formats; CPU frame interval and submit time; **GPU time from timer queries, never substituted with CPU numbers**; GPU capability table; application log; `--gl-debug` driver messages |
 | **Projects** | `.pfproj` JSON with relative paths, sorted keys and compact numbers (diff-friendly); graphs in `.pfgraph` |
 | **Export** | Shaders, `*.material.json` (interface + parameters + hints), the source graph and a preview PNG |
+| **Render Image** | Offscreen frames from 720p to 8K (QHD "2K", 4K UHD, DCI 2K/4K, ultrawide, your screen's native size, custom, portrait) with up to 16× MSAA, saved as PNG/JPEG/WebP — wallpapers |
+| **Render Video** | MP4 (H.264, HEVC, AV1), WebM (VP9), MOV (ProRes) or PNG frames; fps, duration, start time, quality, optional seamless 360° turntable; progress, ETA, cancel |
+| **GPU encoding** | NVIDIA NVENC (H.264/HEVC/AV1) and VAAPI are used when they work on this machine; CPU encoders otherwise. Every encoder is test-opened before it is offered |
+| **GPU selection** | On hybrid laptops PrismForge renders on the NVIDIA GPU automatically (View → GPU, or `--gpu`) |
+| **Screen mode** | A full-viewport quad (Alt+4) for 2D effects and wallpapers; see `examples/wallpaper` |
 
 ## Install a package
 
 | Distribution | Package | Install |
 |---|---|---|
-| Fedora 44 | `prismforge-0.2.0-1.fc44.x86_64.rpm` | `sudo dnf install ./prismforge-0.2.0-1.fc44.x86_64.rpm` |
-| Ubuntu 24.04 | `prismforge_0.2.0_amd64.deb` | `sudo apt install ./prismforge_0.2.0_amd64.deb` |
+| Fedora 44 | `prismforge-0.3.0-1.fc44.x86_64.rpm` | `sudo dnf install ./prismforge-0.3.0-1.fc44.x86_64.rpm` |
+| Ubuntu 24.04 | `prismforge_0.3.0_amd64.deb` | `sudo apt install ./prismforge_0.3.0_amd64.deb` |
 
 Packages install the `prismforge` binary, a desktop launcher with the app
 icon, AppStream metadata, a `.pfproj` file association and example projects in
@@ -41,6 +46,7 @@ the DEB is built against Ubuntu 24.04's Qt 6.4.
 |---|---|---|
 | C++20 compiler, CMake ≥ 3.24, Ninja | `gcc-c++ cmake ninja-build` | `build-essential cmake ninja-build` |
 | Qt 6 base (Widgets, OpenGL, Concurrent, Test) | `qt6-qtbase-devel` | `qt6-base-dev` |
+| FFmpeg libraries (optional; video export) | `libavcodec-free-devel libavformat-free-devel libavutil-free-devel libswscale-free-devel` | `libavcodec-dev libavformat-dev libavutil-dev libswscale-dev` |
 | glslang (optional, recommended) | `glslang glslang-devel` | `glslang-dev glslang-tools spirv-tools` |
 | Catch2 v3 (tests) | `catch-devel` | `catch2` |
 | OpenGL 4.5 driver | Mesa ≥ 20 or vendor driver | same |
@@ -70,6 +76,10 @@ cpack -G DEB        # on Debian/Ubuntu (needs dpkg-dev)
 | `--graph` | Start with the shader graph generating the fragment shader |
 | `--export <dir>` | Export after the first successful compile, then exit (0 = success) |
 | `--gl-debug` | OpenGL debug context; driver messages go to the Log panel |
+| `--gpu auto\|nvidia\|integrated` | GPU for this run (hybrid laptops) |
+| `--render-image <file>` | Render a frame (`--size 4k`, `--samples 8`, `--time 12`) and exit |
+| `--render-video <file>` | Render a clip (`--size`, `--fps`, `--duration`, `--time`, `--format`, `--quality`, `--turntable`) and exit |
+| `--list-video-formats` | Show which video encoders work on this machine |
 | `--screenshot <png>` / `--screenshot-delay <ms>` | Save a window screenshot and exit |
 | `--smoke-replace-fragment <file>` | After the first good compile, swap in this fragment shader (scripted testing) |
 
@@ -79,10 +89,11 @@ cpack -G DEB        # on Debian/Ubuntu (needs dpkg-dev)
 |---|---|
 | Compile / toggle shader graph mode | F5 / Ctrl+G |
 | Fragment / vertex tab | Ctrl+1 / Ctrl+2 |
-| Sphere / plane / cube | Alt+1 / Alt+2 / Alt+3 |
 | Orbit / zoom / reset camera | drag / wheel / Home |
 | New / open / save / save-as project | Ctrl+N / Ctrl+O / Ctrl+S / Ctrl+Shift+S |
 | Export material | Ctrl+E |
+| Render image / render video | Ctrl+Shift+I / Ctrl+Shift+V |
+| Sphere / plane / cube / screen | Alt+1 … Alt+4 |
 | Graph: add node / connect / disconnect | right-click canvas / drag between ports / drag an input away |
 | Graph: delete / duplicate / frame / undo / redo | Del / Ctrl+D / F / Ctrl+Z / Ctrl+Shift+Z |
 
@@ -102,7 +113,7 @@ the same `id` as a built-in replaces it.
 Verified on Fedora 44 (Wayland), Mesa 26.2.5, Intel RPL-P, GL 4.6 core:
 
 - Debug and Release builds with `-Wall -Wextra -Wpedantic`: no warnings.
-- **58 automated tests pass**:
+- **66 automated tests pass**:
   - unit: diagnostics parsing, project/graph/material JSON, meshes, camera,
     glslang validation, log capture, export
   - graph: every built-in node's GLSL compiled by glslang (each output, and
@@ -112,6 +123,15 @@ Verified on Fedora 44 (Wayland), Mesa 26.2.5, Intel RPL-P, GL 4.6 core:
     pixels, the default graph links and draws
   - widgets (offscreen, synthetic input): connect by dragging in both
     directions, disconnect, move, delete, duplicate, undo/redo
+  - offscreen rendering at 2560×1440 with MSAA: full coverage, orientation,
+    size limits
+  - video: every available encoder (here h264/hevc/av1 on NVENC, AV1 on
+    SVT-AV1, VP9, ProRes) encodes a clip that decodes back with the exact frame
+    count, size and rate; partial files are removed on abort
+- GPU tests also pass on the NVIDIA RTX 4060 (driver 595) via PRIME offload.
+- End to end: a 3840×2160 wallpaper; 1080p and 4K clips verified with
+  ffprobe (frame count, duration, BT.709 tags); a video frame matches a still
+  render at the same uTime within compression noise (mean 1.3/255).
 - App runs checked with screenshots: code mode, broken-shader recovery,
   parameters loaded from a project, graph mode, a graph project rendering pure
   red at the exact viewport pixel, both example projects, CLI export.
@@ -121,6 +141,16 @@ Not covered by automated tests: file dialogs (Save As, Open, Export
 location), colour picker dialogs, mouse orbit in the 3D viewport.
 
 ## Known limitations
+
+- 4K video renders at roughly 14 frames per second here: colour conversion and
+  read-back on the CPU dominate, not the GPU encoder. 1080p is much faster.
+- H.264/HEVC need NVENC, FFmpeg with libx264/libx265, or a VAAPI driver with
+  encoding. Fedora's `ffmpeg-free` and `libva-intel-media-driver` have neither
+  software H.264 nor Intel H.264 encoding, so on Intel-only Fedora machines use
+  AV1 or VP9 (or install RPM Fusion's full codecs).
+- On hybrid laptops under Wayland, rendering on the NVIDIA GPU runs PrismForge
+  through XWayland (NVIDIA offload through Wayland EGL failed on the test
+  machine). Choose View → GPU → Integrated for native Wayland.
 
 - Driver compilation runs on the GUI thread (glslang validation does not);
   very large shaders can briefly stall the UI.

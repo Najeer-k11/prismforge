@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSet>
 #include <QTemporaryDir>
 
 #include <cmath>
@@ -82,7 +83,7 @@ TEST_CASE("PNG sequences write one numbered file per frame", "[video]")
     VideoEncoder encoder;
     QString error;
     const QString out = dir.filePath("frames");
-    REQUIRE(encoder.open({out, VideoFormat::PngSequence, {64, 36}, 24, VideoQuality::High}, &error));
+    REQUIRE(encoder.open({out, VideoFormat::PngSequence, {}, {64, 36}, 24, VideoQuality::High}, &error));
     for (int i = 0; i < 5; ++i)
         REQUIRE(encoder.writeFrame(testFrame({64, 36}, i), &error));
     REQUIRE(encoder.finish(&error));
@@ -100,11 +101,11 @@ TEST_CASE("Invalid video settings are rejected", "[video]")
     QTemporaryDir dir;
     VideoEncoder encoder;
     QString error;
-    CHECK_FALSE(encoder.open({dir.filePath("a"), VideoFormat::PngSequence, {65, 36}, 30, {}}, &error));
+    CHECK_FALSE(encoder.open({dir.filePath("a"), VideoFormat::PngSequence, {}, {65, 36}, 30, {}}, &error));
     CHECK(error.contains("even"));
-    CHECK_FALSE(encoder.open({dir.filePath("a"), VideoFormat::PngSequence, {64, 36}, 0, {}}, &error));
+    CHECK_FALSE(encoder.open({dir.filePath("a"), VideoFormat::PngSequence, {}, {64, 36}, 0, {}}, &error));
 
-    REQUIRE(encoder.open({dir.filePath("b"), VideoFormat::PngSequence, {64, 36}, 30, {}}, &error));
+    REQUIRE(encoder.open({dir.filePath("b"), VideoFormat::PngSequence, {}, {64, 36}, 30, {}}, &error));
     CHECK_FALSE(encoder.writeFrame(testFrame({32, 32}, 0), &error)); // wrong size
     CHECK(error.contains("size"));
 }
@@ -112,11 +113,22 @@ TEST_CASE("Invalid video settings are rejected", "[video]")
 TEST_CASE("Video formats are listed with keys and a reason when unavailable", "[video]")
 {
     const auto& formats = videoFormats();
-    REQUIRE(formats.size() == 6);
+    QSet<QString> keys;
     for (const VideoFormatInfo& f : formats) {
+        CHECK_FALSE(keys.contains(f.key)); // keys are unique
+        keys.insert(f.key);
         CHECK(findVideoFormat(f.key) == &f);
         if (!f.available)
             CHECK_FALSE(f.reason.isEmpty());
+        else
+            CHECK_FALSE(f.encoder.isEmpty());
+    }
+    // Every format family is represented, available or not.
+    for (const char* family : {"h264", "hevc", "av1", "vp9", "prores", "png"}) {
+        INFO(family);
+        const VideoFormatInfo* f = findVideoFormat(family);
+        REQUIRE(f);
+        CHECK(f->key.startsWith(QString::fromLatin1(family)));
     }
     CHECK(findVideoFormat("png")->available);
     CHECK_FALSE(findVideoFormat("gif"));
@@ -135,7 +147,8 @@ TEST_CASE("Every available video format encodes a playable clip", "[video][ffmpe
         const QSize size(320, 180);
         VideoEncoder encoder;
         QString error;
-        REQUIRE(encoder.open({path, f.format, size, 24, VideoQuality::Medium}, &error));
+        REQUIRE(encoder.open({path, f.format, f.key, size, 24, VideoQuality::Medium}, &error));
+        CHECK(encoder.encoderName() == f.encoder);
         for (int i = 0; i < 24; ++i) {
             INFO("frame " << i << ": " << error.toStdString());
             REQUIRE(encoder.writeFrame(testFrame(size, i), &error));
@@ -168,7 +181,7 @@ TEST_CASE("Aborting removes the partial video file", "[video][ffmpeg]")
     {
         VideoEncoder encoder;
         QString error;
-        REQUIRE(encoder.open({path, format->format, {320, 180}, 30, VideoQuality::Small}, &error));
+        REQUIRE(encoder.open({path, format->format, format->key, {320, 180}, 30, VideoQuality::Small}, &error));
         REQUIRE(encoder.writeFrame(testFrame({320, 180}, 0), &error));
         CHECK(QFileInfo::exists(path));
     } // destroyed without finish()

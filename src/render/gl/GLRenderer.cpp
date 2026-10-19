@@ -538,6 +538,13 @@ bool GLRenderer::renderToImage(const FrameParams& params, int samples, QImage* i
                                  size.height(), 0, 0, size.width(), size.height(), GL_COLOR_BUFFER_BIT,
                                  GL_NEAREST);
 
+    // Force opaque alpha on the GPU (shaders may write any alpha): clear only
+    // the alpha channel of the resolved image.
+    const GLfloat opaque[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    m_gl->glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    m_gl->glClearNamedFramebufferfv(m_offscreen.resolveFbo.get(), GL_COLOR, 0, opaque);
+    m_gl->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
     // GL rows are bottom-up; read into a buffer and flip into the image.
     const qsizetype rowBytes = qsizetype(size.width()) * 4;
     QByteArray pixels(rowBytes * size.height(), Qt::Uninitialized);
@@ -554,12 +561,8 @@ bool GLRenderer::renderToImage(const FrameParams& params, int samples, QImage* i
             *error = QStringLiteral("Out of memory allocating a %1x%2 image").arg(size.width()).arg(size.height());
         return false;
     }
-    for (int y = 0; y < size.height(); ++y) {
-        uchar* dst = out.scanLine(size.height() - 1 - y);
-        std::memcpy(dst, pixels.constData() + rowBytes * y, size_t(rowBytes));
-        for (int x = 0; x < size.width(); ++x)
-            dst[x * 4 + 3] = 0xff; // opaque: alpha written by the shader is not meaningful here
-    }
+    for (int y = 0; y < size.height(); ++y)
+        std::memcpy(out.scanLine(size.height() - 1 - y), pixels.constData() + rowBytes * y, size_t(rowBytes));
     *image = std::move(out);
     return true;
 }

@@ -1,3 +1,4 @@
+#include "app/GpuSelection.h"
 #include "app/MainWindow.h"
 #include "app/Theme.h"
 #include "diagnostics/LogCapture.h"
@@ -21,9 +22,18 @@ int main(int argc, char* argv[])
 {
     pf::LogCapture::install();
 
-    // Parsed before QApplication: the surface format must be set first.
+    // Parsed before QApplication: the surface format and the GPU (driver
+    // environment) must be chosen before Qt initialises its platform.
     const bool glDebug = std::any_of(argv + 1, argv + argc,
                                      [](const char* a) { return std::strcmp(a, "--gl-debug") == 0; });
+    pf::GpuPreference gpu = pf::savedGpuPreference();
+    for (int i = 1; i < argc; ++i) {
+        if (std::strncmp(argv[i], "--gpu=", 6) == 0)
+            gpu = pf::gpuPreferenceFromString(QString::fromLocal8Bit(argv[i] + 6));
+        else if (std::strcmp(argv[i], "--gpu") == 0 && i + 1 < argc)
+            gpu = pf::gpuPreferenceFromString(QString::fromLocal8Bit(argv[i + 1]));
+    }
+    const pf::GpuSetupResult gpuSetup = pf::applyGpuPreference(gpu);
 
     // The context format must be set before the application object exists.
     QSurfaceFormat format;
@@ -48,6 +58,8 @@ int main(int argc, char* argv[])
     for (int size : {16, 32, 48, 64, 128, 256})
         icon.addFile(QStringLiteral(":/icons/prismforge-%1.png").arg(size), QSize(size, size));
     QApplication::setWindowIcon(icon);
+
+    qCInfo(lcApp).noquote() << gpuSetup.description;
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("GPU shader development environment"));
@@ -97,19 +109,25 @@ int main(int argc, char* argv[])
                                             QStringLiteral("Video length in seconds (default 10)."),
                                             QStringLiteral("seconds"), QStringLiteral("10"));
     const QCommandLineOption formatOption(QStringLiteral("format"),
-                                          QStringLiteral("Video format: h264, hevc, av1, vp9, prores or png "
-                                                         "(default: first available)."),
+                                          QStringLiteral("Video format: h264, hevc, av1, vp9, prores, png, or an exact "
+                                                         "entry such as av1-cpu (see --list-video-formats). "
+                                                         "Default: first available, GPU encoders preferred."),
                                           QStringLiteral("format"));
     const QCommandLineOption qualityOption(QStringLiteral("quality"),
                                            QStringLiteral("Video quality: high, medium or small (default high)."),
                                            QStringLiteral("quality"), QStringLiteral("high"));
     const QCommandLineOption turntableOption(QStringLiteral("turntable"),
                                              QStringLiteral("Orbit the camera 360° over the video."));
+    const QCommandLineOption gpuOption(QStringLiteral("gpu"),
+                                       QStringLiteral("GPU for rendering on hybrid laptops: auto, nvidia or "
+                                                      "integrated (overrides View > GPU for this run)."),
+                                       QStringLiteral("gpu"));
     const QCommandLineOption listFormatsOption(QStringLiteral("list-video-formats"),
                                                QStringLiteral("Print the available video formats and exit."));
     parser.addOptions({screenshotOption, delayOption, smokeOption, glDebugOption, graphOption, exportOption,
                        renderImageOption, renderVideoOption, sizeOption, samplesOption, timeOption, fpsOption,
-                       durationOption, formatOption, qualityOption, turntableOption, listFormatsOption});
+                       durationOption, formatOption, qualityOption, turntableOption, listFormatsOption,
+                       gpuOption});
     parser.process(app);
 
     if (parser.isSet(listFormatsOption)) {
@@ -169,6 +187,7 @@ int main(int argc, char* argv[])
         pf::VideoRenderOptions options;
         options.video.path = parser.value(renderVideoOption);
         options.video.format = format->format;
+        options.video.encoderKey = format->key;
         options.video.size = pf::evenSize(*size);
         options.video.fps = parser.value(fpsOption).toInt();
         options.video.quality = quality == u"small"    ? pf::media::VideoQuality::Small

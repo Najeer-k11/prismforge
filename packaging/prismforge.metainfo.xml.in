@@ -20,6 +20,7 @@
       <li>Visual shader graph with deterministic GLSL generation</li>
       <li>GPU timing, capability information and an application log</li>
       <li>Export of shaders, material descriptions and preview images</li>
+      <li>Wallpaper rendering up to 8K and video export with GPU encoding</li>
     </ul>
   </description>
   <launchable type="desktop-id">@PRISMFORGE_APP_ID@.desktop</launchable>
@@ -34,6 +35,12 @@
   <content_rating type="oars-1.1"/>
   <releases>
     <release version="@PROJECT_VERSION@" date="2026-10-19">
+      <description>
+        <p>High-resolution image rendering for wallpapers, video export (NVENC, VAAPI and CPU encoders),
+        full-screen preview mode and automatic NVIDIA GPU selection on hybrid laptops.</p>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-10-19">
       <description>
         <p>Material parameters, diagnostics panels, visual shader graph, export and packaging.</p>
       </description>

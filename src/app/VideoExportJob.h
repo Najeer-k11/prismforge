@@ -8,6 +8,7 @@
 #include <QImage>
 #include <QObject>
 
+#include <atomic>
 #include <memory>
 #include <optional>
 
@@ -53,6 +54,8 @@ private:
     bool m_cancelled = false;
     bool m_done = false;
     QElapsedTimer m_clock;
+    qint64 m_renderNs = 0;                    // GUI thread: render + read-back
+    std::shared_ptr<std::atomic<qint64>> m_encodeNs = std::make_shared<std::atomic<qint64>>(0);
 };
 
 } // namespace pf

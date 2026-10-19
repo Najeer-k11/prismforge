@@ -16,6 +16,7 @@
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <cstdio>
 #include <optional>
 
@@ -292,8 +293,10 @@ TEST_CASE("Offscreen render produces a full-size opaque image", "[gl][export]")
     REQUIRE(s.renderer().renderToImage(makeFrameParams({}, PreviewMesh::Screen, size, 0.0f), 4, &image, &error));
     CHECK(image.size() == size);
     // The screen quad covers every pixel, corners included.
+    // 0.5 * 255 = 127.5: drivers may round either way (Mesa 128, NVIDIA 127).
+    auto nearOrange = [](QRgb c) { return qRed(c) == 255 && std::abs(qGreen(c) - 128) <= 1 && qBlue(c) == 0; };
     for (QPoint p : {QPoint(0, 0), QPoint(2559, 0), QPoint(0, 1439), QPoint(2559, 1439), QPoint(1280, 720)})
-        CHECK(image.pixel(p) == qRgb(255, 128, 0));
+        CHECK(nearOrange(image.pixel(p)));
     CHECK(qAlpha(image.pixel(10, 10)) == 255);
 
     // Too large for the device: a clear error, no crash.

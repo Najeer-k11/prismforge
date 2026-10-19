@@ -3,6 +3,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QLoggingCategory>
+#include <QSet>
 
 #include <array>
 
@@ -17,6 +19,8 @@ extern "C" {
 }
 #endif
 
+Q_LOGGING_CATEGORY(lcMedia, "prismforge.media")
+
 namespace pf::media {
 
 namespace {
@@ -29,20 +33,61 @@ QString avError(int code)
     return QString::fromUtf8(buffer);
 }
 
-// Software encoder preferred over the hardware one where both exist.
+// While probing, failures are expected; keep them out of the warnings.
+thread_local bool t_probing = false;
+
+// FFmpeg (and encoders using its logger) write to the Qt log instead of
+// stderr, so messages appear in the Log panel.
+void logCallback(void* avcl, int level, const char* format, va_list args)
+{
+    if (level > AV_LOG_WARNING)
+        return;
+    char line[1024];
+    int printPrefix = 1;
+    av_log_format_line2(avcl, level, format, args, line, sizeof(line), &printPrefix);
+    const QString text = QString::fromUtf8(line).trimmed();
+    if (text.isEmpty())
+        return;
+    if (t_probing || level > AV_LOG_ERROR)
+        qCDebug(lcMedia).noquote() << text;
+    else
+        qCWarning(lcMedia).noquote() << text;
+}
+
+void initLogging()
+{
+    static const bool once = [] {
+        av_log_set_callback(&logCallback);
+        // SVT-AV1 prints its banner through its own logger; errors only.
+        if (qEnvironmentVariableIsEmpty("SVT_LOG"))
+            qputenv("SVT_LOG", "1");
+        return true;
+    }();
+    Q_UNUSED(once);
+}
+
+// Candidates in preference order: GPU encoders first (much faster at 4K),
+// then CPU encoders.
 struct Candidate {
     const char* encoder;
-    bool vaapi;
+    EncoderBackend backend;
+    bool lowPower = false; // Intel VDENC: the only H.264/HEVC path on newer Intel GPUs
 };
 
 QList<Candidate> candidatesFor(VideoFormat format)
 {
+    using B = EncoderBackend;
     switch (format) {
-    case VideoFormat::H264: return {{"libx264", false}, {"h264_vaapi", true}};
-    case VideoFormat::Hevc: return {{"libx265", false}, {"hevc_vaapi", true}};
-    case VideoFormat::Av1: return {{"libsvtav1", false}, {"libaom-av1", false}, {"av1_vaapi", true}};
-    case VideoFormat::Vp9: return {{"libvpx-vp9", false}};
-    case VideoFormat::ProRes: return {{"prores_ks", false}};
+    case VideoFormat::H264:
+        return {{"h264_nvenc", B::Nvenc}, {"h264_vaapi", B::Vaapi}, {"h264_vaapi", B::Vaapi, true},
+                {"libx264", B::Cpu}};
+    case VideoFormat::Hevc:
+        return {{"hevc_nvenc", B::Nvenc}, {"hevc_vaapi", B::Vaapi}, {"hevc_vaapi", B::Vaapi, true},
+                {"libx265", B::Cpu}};
+    case VideoFormat::Av1:
+        return {{"av1_nvenc", B::Nvenc}, {"av1_vaapi", B::Vaapi}, {"libsvtav1", B::Cpu}, {"libaom-av1", B::Cpu}};
+    case VideoFormat::Vp9: return {{"libvpx-vp9", B::Cpu}};
+    case VideoFormat::ProRes: return {{"prores_ks", B::Cpu}};
     case VideoFormat::PngSequence: return {};
     }
     return {};
@@ -90,7 +135,7 @@ bool openCodec(const Candidate& candidate, VideoFormat format, QSize size, int f
         av_dict_set(&options, key, value.toUtf8().constData(), 0);
     };
 
-    if (candidate.vaapi) {
+    if (candidate.backend == EncoderBackend::Vaapi) {
         int rc = av_hwdevice_ctx_create(&s.hwDevice, AV_HWDEVICE_TYPE_VAAPI, nullptr, nullptr, 0);
         if (rc < 0) {
             *error = QStringLiteral("no VAAPI device (%1)").arg(avError(rc));
@@ -114,8 +159,18 @@ bool openCodec(const Candidate& candidate, VideoFormat format, QSize size, int f
         c->hw_frames_ctx = frames; // codec context takes ownership
         c->pix_fmt = AV_PIX_FMT_VAAPI;
         set("rc_mode", QStringLiteral("CQP"));
+        if (candidate.lowPower)
+            set("low_power", QStringLiteral("1"));
         c->global_quality = std::array{20, 25, 30}[q];
         set("qp", QString::number(c->global_quality));
+    } else if (candidate.backend == EncoderBackend::Nvenc) {
+        // NVENC takes system-memory frames and uploads them itself.
+        c->pix_fmt = AV_PIX_FMT_YUV420P;
+        c->bit_rate = 0;
+        set("preset", QStringLiteral("p5"));
+        set("tune", QStringLiteral("hq"));
+        set("rc", QStringLiteral("vbr"));
+        set("cq", QString::number(format == VideoFormat::Av1 ? std::array{26, 32, 40}[q] : std::array{19, 24, 30}[q]));
     } else {
         c->pix_fmt = format == VideoFormat::ProRes ? AV_PIX_FMT_YUV422P10LE : AV_PIX_FMT_YUV420P;
         const QString name = QString::fromLatin1(candidate.encoder);
@@ -168,6 +223,30 @@ QString formatLabel(VideoFormat f)
 
 } // namespace
 
+namespace {
+
+QString backendLabel(EncoderBackend b)
+{
+    switch (b) {
+    case EncoderBackend::Nvenc: return QStringLiteral("NVIDIA GPU");
+    case EncoderBackend::Vaapi: return QStringLiteral("GPU (VAAPI)");
+    case EncoderBackend::Cpu: return QStringLiteral("CPU");
+    }
+    return {};
+}
+
+QString backendTag(EncoderBackend b)
+{
+    switch (b) {
+    case EncoderBackend::Nvenc: return QStringLiteral("nvenc");
+    case EncoderBackend::Vaapi: return QStringLiteral("vaapi");
+    case EncoderBackend::Cpu: return QStringLiteral("cpu");
+    }
+    return {};
+}
+
+} // namespace
+
 const QList<VideoFormatInfo>& videoFormats()
 {
     static const QList<VideoFormatInfo> formats = [] {
@@ -181,35 +260,64 @@ const QList<VideoFormatInfo>& videoFormats()
             {VideoFormat::ProRes, "prores", "mov"}, {VideoFormat::PngSequence, "png", ""},
         };
         QList<VideoFormatInfo> list;
+#ifdef PRISMFORGE_HAVE_FFMPEG
+        initLogging();
+        t_probing = true;
+#endif
         for (const auto& row : table) {
-            VideoFormatInfo info{row.format, QString::fromLatin1(row.key), formatLabel(row.format),
-                                 QString::fromLatin1(row.extension), false, {}};
+            const QString base = QString::fromLatin1(row.key);
             if (row.format == VideoFormat::PngSequence) {
-                info.available = true;
-                list.append(info);
+                list.append({row.format, base, formatLabel(row.format), {}, true, {}, QStringLiteral("png"),
+                             EncoderBackend::Cpu, false});
                 continue;
             }
-#ifdef PRISMFORGE_HAVE_FFMPEG
             QStringList reasons;
+            bool any = false;
+#ifdef PRISMFORGE_HAVE_FFMPEG
+            QSet<EncoderBackend> found; // one entry per backend
             for (const Candidate& candidate : candidatesFor(row.format)) {
+                if (found.contains(candidate.backend))
+                    continue;
                 CodecSetup s;
                 QString why;
-                if (openCodec(candidate, row.format, {256, 256}, 30, VideoQuality::Medium, false, &s, &why)) {
-                    freeSetup(s);
-                    info.available = true;
-                    info.label += QStringLiteral(" (%1%2)")
-                                      .arg(QString::fromLatin1(candidate.encoder),
-                                           candidate.vaapi ? QStringLiteral(", GPU") : QString());
-                    break;
+                if (!openCodec(candidate, row.format, {256, 256}, 30, VideoQuality::Medium, false, &s, &why)) {
+                    if (!reasons.contains(why))
+                        reasons << why;
+                    continue;
                 }
-                reasons << why;
+                freeSetup(s);
+                found.insert(candidate.backend);
+                any = true;
+                VideoFormatInfo info{row.format,
+                                     base + QLatin1Char('-') + backendTag(candidate.backend),
+                                     QStringLiteral("%1 — %2 (%3)")
+                                         .arg(formatLabel(row.format), backendLabel(candidate.backend),
+                                              QString::fromLatin1(candidate.encoder)),
+                                     QString::fromLatin1(row.extension),
+                                     true,
+                                     {},
+                                     QString::fromLatin1(candidate.encoder),
+                                     candidate.backend,
+                                     candidate.lowPower};
+                qCDebug(lcMedia).noquote() << "available:" << info.key << info.label;
+                list.append(info);
             }
-            info.reason = reasons.join(QStringLiteral("; "));
 #else
-            info.reason = QStringLiteral("PrismForge was built without FFmpeg");
+            reasons << QStringLiteral("PrismForge was built without FFmpeg");
 #endif
+            if (any)
+                continue;
+            VideoFormatInfo info{row.format, base, formatLabel(row.format), QString::fromLatin1(row.extension),
+                                 false, reasons.join(QStringLiteral("; ")), {}, EncoderBackend::Cpu, false};
+            if (row.format == VideoFormat::H264 || row.format == VideoFormat::Hevc)
+                info.reason = QStringLiteral("Needs an NVIDIA GPU (NVENC), FFmpeg with libx264/libx265, or a VAAPI "
+                                             "driver with H.264/HEVC encoding. Details: ") + info.reason;
+            qCDebug(lcMedia).noquote() << "unavailable:" << info.key << info.reason;
             list.append(info);
         }
+#ifdef PRISMFORGE_HAVE_FFMPEG
+        t_probing = false;
+#endif
         return list;
     }();
     return formats;
@@ -217,8 +325,17 @@ const QList<VideoFormatInfo>& videoFormats()
 
 const VideoFormatInfo* findVideoFormat(const QString& key)
 {
-    for (const VideoFormatInfo& f : videoFormats())
-        if (f.key == key.toLower())
+    const QString k = key.toLower();
+    const QList<VideoFormatInfo>& all = videoFormats();
+    for (const VideoFormatInfo& f : all)
+        if (f.key == k)
+            return &f;
+    // A bare format name: its first (preferred) entry, available or not.
+    for (const VideoFormatInfo& f : all)
+        if (f.key.section(QLatin1Char('-'), 0, 0) == k)
+            return &f;
+    for (const VideoFormatInfo& f : all)
+        if (f.available && f.encoder == k)
             return &f;
     return nullptr;
 }
@@ -320,9 +437,11 @@ bool VideoEncoder::open(const VideoSettings& settings, QString* error)
     }
 
 #ifdef PRISMFORGE_HAVE_FFMPEG
+    initLogging();
     const VideoFormatInfo* info = nullptr;
     for (const VideoFormatInfo& f : videoFormats())
-        if (f.format == settings.format)
+        if (f.format == settings.format && (settings.encoderKey.isEmpty() ? (!info && f.available)
+                                                                          : f.key == settings.encoderKey))
             info = &f;
     if (!info || !info->available) {
         *error = QStringLiteral("%1 is not available: %2").arg(info ? info->label : QStringLiteral("format"),
@@ -338,21 +457,20 @@ bool VideoEncoder::open(const VideoSettings& settings, QString* error)
     }
     const bool globalHeader = d->format->oformat->flags & AVFMT_GLOBALHEADER;
 
+    // Use exactly the configuration that passed the probe.
+    const Candidate candidate{nullptr, info->backend, info->lowPower};
+    const QByteArray encoderName = info->encoder.toLatin1();
+    Candidate chosen = candidate;
+    chosen.encoder = encoderName.constData();
     QString why;
-    bool opened = false;
-    for (const Candidate& candidate : candidatesFor(settings.format)) {
-        if (openCodec(candidate, settings.format, settings.size, settings.fps, settings.quality, globalHeader,
-                      &d->codec, &why)) {
-            d->encoder = QString::fromLatin1(candidate.encoder);
-            opened = true;
-            break;
-        }
-    }
-    if (!opened) {
-        *error = QStringLiteral("Could not open an encoder: %1").arg(why);
+    if (!openCodec(chosen, settings.format, settings.size, settings.fps, settings.quality, globalHeader, &d->codec,
+                   &why)) {
+        *error = QStringLiteral("Could not open %1 at %2x%3: %4")
+                     .arg(info->encoder).arg(settings.size.width()).arg(settings.size.height()).arg(why);
         d->release();
         return false;
     }
+    d->encoder = info->encoder;
 
     d->stream = avformat_new_stream(d->format, nullptr);
     avcodec_parameters_from_context(d->stream->codecpar, d->codec.ctx);

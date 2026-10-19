@@ -115,6 +115,8 @@ qt_add_executable(prismforge
     app/RenderDialogs.cpp
     app/VideoExportJob.h
     app/VideoExportJob.cpp
+    app/GpuSelection.h
+    app/GpuSelection.cpp
     app/Theme.h
     app/Theme.cpp
 )

@@ -1,6 +1,7 @@
 #include "app/MainWindow.h"
 
 #include "app/DiagnosticsPanel.h"
+#include "app/GpuSelection.h"
 #include "app/LogPanel.h"
 #include "app/MaterialPanel.h"
 #include "app/VideoExportJob.h"
@@ -24,6 +25,7 @@
 #include <QImageWriter>
 #include <QProgressDialog>
 #include <QLabel>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSaveFile>
@@ -108,8 +110,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(m_viewport, &ViewportWidget::statsUpdated, this, &MainWindow::showStats);
     connect(m_viewport, &ViewportWidget::rendererFailed, this, [this](const QString& reason) {
         m_rendererLabel->setText(tr("<b>Renderer unavailable</b><br>%1").arg(reason.toHtmlEscaped()));
-        QMessageBox::critical(this, tr("Renderer unavailable"),
-                              tr("The preview could not be started:\n\n%1").arg(reason));
+        QString message = tr("The preview could not be started:\n\n%1").arg(reason);
+        if (qgetenv("__NV_PRIME_RENDER_OFFLOAD") == "1")
+            message += tr("\n\nPrismForge tried to render on the NVIDIA GPU. Choose View > GPU > Integrated "
+                          "and restart, or start once with --gpu integrated.");
+        QMessageBox::critical(this, tr("Renderer unavailable"), message);
         if (m_compileInFlight)
             finishCompile(false, {{Severity::Error, std::nullopt, -1, -1, reason, "renderer"}});
     });
@@ -332,6 +337,31 @@ void MainWindow::createActions()
     connect(m_meshGroup, &QActionGroup::triggered, this, [this](QAction* a) {
         m_viewport->setPreviewMesh(PreviewMesh(a->data().toInt()));
     });
+    viewMenu->addSeparator();
+    {
+        QMenu* gpuMenu = viewMenu->addMenu(tr("GPU"));
+        gpuMenu->setToolTipsVisible(true);
+        auto* group = new QActionGroup(gpuMenu);
+        const GpuPreference current = savedGpuPreference();
+        const std::pair<GpuPreference, QString> choices[] = {
+            {GpuPreference::Automatic, tr("Automatic (NVIDIA on hybrid laptops)")},
+            {GpuPreference::Nvidia, tr("NVIDIA GPU")},
+            {GpuPreference::Integrated, tr("Integrated / default GPU")},
+        };
+        for (const auto& [preference, label] : choices) {
+            QAction* a = gpuMenu->addAction(label);
+            a->setCheckable(true);
+            a->setChecked(preference == current);
+            group->addAction(a);
+            connect(a, &QAction::triggered, this, [this, preference] {
+                saveGpuPreference(preference);
+                QMessageBox::information(this, tr("GPU"),
+                                         tr("The GPU choice takes effect the next time PrismForge starts."));
+            });
+        }
+        if (!isHybridNvidiaSystem())
+            gpuMenu->setToolTip(tr("No hybrid NVIDIA setup detected; the default GPU is used"));
+    }
     viewMenu->addSeparator();
     auto* resetCamera = viewMenu->addAction(tr("Reset Camera"), QKeySequence(tr("Home")), m_viewport,
                                             &ViewportWidget::resetCamera);

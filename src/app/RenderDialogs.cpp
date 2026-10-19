@@ -379,6 +379,7 @@ VideoRenderOptions RenderVideoDialog::options() const
     VideoRenderOptions o;
     o.video.path = m_path->text().trimmed();
     o.video.format = currentFormat()->format;
+    o.video.encoderKey = currentFormat()->key;
     o.video.size = evenSize(m_resolution->resolution());
     o.video.fps = m_fps->currentData().toInt();
     o.video.quality = media::VideoQuality(m_quality->currentData().toInt());

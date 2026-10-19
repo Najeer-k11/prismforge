@@ -13,19 +13,28 @@ enum class VideoFormat { H264, Hevc, Av1, Vp9, ProRes, PngSequence };
 
 enum class VideoQuality { High, Medium, Small };
 
+enum class EncoderBackend { Cpu, Nvenc, Vaapi };
+
+// One way of producing a format: e.g. AV1 on the NVIDIA GPU, or AV1 on the CPU.
 struct VideoFormatInfo {
     VideoFormat format;
-    QString key;       // command-line name: h264, hevc, av1, vp9, prores, png
-    QString label;     // for dialogs, includes the encoder actually used
+    QString key;       // unique, e.g. "av1-nvenc", "av1-cpu", "vp9-cpu", "png"
+    QString label;     // for dialogs, e.g. "MP4 · AV1 — NVIDIA GPU (av1_nvenc)"
     QString extension; // without dot; empty for PNG sequences (a directory)
     bool available = false;
     QString reason;    // why it is unavailable
+    QString encoder;   // FFmpeg encoder name
+    EncoderBackend backend = EncoderBackend::Cpu;
+    bool lowPower = false; // internal: Intel VDENC variant that passed the probe
 };
 
-// Formats in preference order with availability probed against the linked
-// FFmpeg libraries and this machine (hardware encoders are test-opened).
-// Probing happens once; later calls return the cached result.
+// Every working encoder for each format, GPU encoders first, probed against
+// the linked FFmpeg libraries and this machine's drivers (each is actually
+// opened). A format with no working encoder appears once, unavailable, with
+// the reason. Probing happens once; later calls return the cached result.
 const QList<VideoFormatInfo>& videoFormats();
+// Exact key, or a format name ("h264", "av1", ...) for its preferred working
+// encoder, or an FFmpeg encoder name ("libsvtav1").
 const VideoFormatInfo* findVideoFormat(const QString& key);
 
 // Version of the linked FFmpeg libraries, or empty when built without them.
@@ -34,6 +43,7 @@ QString ffmpegVersion();
 struct VideoSettings {
     QString path; // file, or directory for PngSequence
     VideoFormat format = VideoFormat::H264;
+    QString encoderKey; // a VideoFormatInfo key; empty = preferred encoder for `format`
     QSize size;
     int fps = 30;
     VideoQuality quality = VideoQuality::High;

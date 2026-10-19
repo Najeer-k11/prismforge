@@ -53,7 +53,11 @@ bool VideoExportJob::renderFrame(int index, QImage* image, QString* error)
     OrbitCamera camera = m_camera;
     if (m_options.turntable) // frame m_total would equal frame 0: a seamless loop
         camera.orbit(360.0f * float(index) / float(m_total), 0.0f);
-    return m_viewport->renderImage(m_options.video.size, m_options.samples, float(t), image, error, &camera);
+    QElapsedTimer timer;
+    timer.start();
+    const bool ok = m_viewport->renderImage(m_options.video.size, m_options.samples, float(t), image, error, &camera);
+    m_renderNs += timer.nsecsElapsed();
+    return ok;
 }
 
 void VideoExportJob::pump()
@@ -74,11 +78,15 @@ void VideoExportJob::pump()
     if (!m_encoding && m_next) {
         m_encoding = true;
         media::VideoEncoder* encoder = m_encoder.get();
-        m_watcher.setFuture(QtConcurrent::run([encoder, frame = std::exchange(m_next, std::nullopt).value()] {
-            QString error;
-            encoder->writeFrame(frame, &error);
-            return error;
-        }));
+        m_watcher.setFuture(
+            QtConcurrent::run([encoder, total = m_encodeNs, frame = std::exchange(m_next, std::nullopt).value()] {
+                QElapsedTimer timer;
+                timer.start();
+                QString error;
+                encoder->writeFrame(frame, &error);
+                *total += timer.nsecsElapsed();
+                return error;
+            }));
         // Render the following frame while this one encodes.
         if (m_rendered < m_total) {
             QImage image;
@@ -126,6 +134,10 @@ void VideoExportJob::onEncoded()
             return;
         }
         const double seconds = double(m_clock.elapsed()) / 1000.0;
+        qCInfo(lcApp).noquote() << QStringLiteral("Video timing per frame: render + read-back %1 ms (GPU thread), "
+                                                  "convert + encode %2 ms (worker)")
+                                       .arg(double(m_renderNs) / 1e6 / m_total, 0, 'f', 1)
+                                       .arg(double(m_encodeNs->load()) / 1e6 / m_total, 0, 'f', 1);
         emit finished(true, tr("Rendered %n frame(s) in %1 s", nullptr, m_total).arg(seconds, 0, 'f', 1));
     });
     finishWatcher->setFuture(QtConcurrent::run([encoder] {
