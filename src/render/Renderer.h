@@ -1,6 +1,7 @@
 #pragma once
 
 #include "diagnostics/Diagnostic.h"
+#include "material/MaterialParameter.h"
 #include "render/Mesh.h"
 #include "shader/ShaderTypes.h"
 
@@ -16,6 +17,9 @@ namespace pf {
 struct ProgramBuildResult {
     bool success = false;
     QList<Diagnostic> diagnostics;
+    // Editable uniforms of the new program (built-ins excluded), with the
+    // values they had after linking. Only filled on success.
+    QList<MaterialParameter> parameters;
 };
 
 struct FrameParams {
@@ -63,6 +67,10 @@ public:
     // active one; on failure the previously active program is left untouched.
     virtual ProgramBuildResult buildProgram(const ShaderSources& sources) = 0;
     virtual bool hasProgram() const = 0;
+
+    // Sets a uniform on the active program. Unknown names or mismatching
+    // types are ignored (the shader may have changed underneath the UI).
+    virtual void setParameter(const QString& name, ParamType type, const ParamValue& value) = 0;
 
     virtual void setMesh(const MeshData& mesh) = 0;
     virtual void renderFrame(const FrameParams& params) = 0;

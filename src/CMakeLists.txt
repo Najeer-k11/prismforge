@@ -10,6 +10,8 @@ add_library(pf_core STATIC
     shader/GlslangValidator.cpp
     project/Project.h
     project/Project.cpp
+    material/MaterialParameter.h
+    material/MaterialParameter.cpp
 )
 target_include_directories(pf_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(pf_core PUBLIC Qt6::Core)
@@ -50,6 +52,8 @@ qt_add_executable(prismforge
     app/ViewportWidget.cpp
     app/DiagnosticsPanel.h
     app/DiagnosticsPanel.cpp
+    app/MaterialPanel.h
+    app/MaterialPanel.cpp
     app/Theme.h
     app/Theme.cpp
 )

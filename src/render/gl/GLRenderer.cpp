@@ -6,7 +6,10 @@
 #include <QOpenGLContext>
 #include <QOpenGLVersionFunctionsFactory>
 
+#include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <tuple>
 
 namespace pf::gl {
 
@@ -125,6 +128,7 @@ void GLRenderer::shutdown()
     if (!m_gl)
         return;
     m_program.reset();
+    m_parameterSlots.clear();
     m_vao.reset();
     m_vbo.reset();
     m_ibo.reset();
@@ -200,9 +204,95 @@ ProgramBuildResult GLRenderer::buildProgram(const ShaderSources& sources)
     m_uniforms.time = m_gl->glGetUniformLocation(p, "uTime");
     m_uniforms.resolution = m_gl->glGetUniformLocation(p, "uResolution");
 
+    QHash<QString, ParameterSlot> slotTable;
+    result.parameters = introspectParameters(p, result.diagnostics, slotTable);
+
     m_program = std::move(program); // old program is deleted here
+    m_parameterSlots = std::move(slotTable);
     result.success = true;
     return result;
+}
+
+QList<MaterialParameter> GLRenderer::introspectParameters(GLuint program,
+                                                          QList<Diagnostic>& diagnostics,
+                                                          QHash<QString, ParameterSlot>& slotTable)
+{
+    QList<MaterialParameter> parameters;
+    GLint count = 0;
+    m_gl->glGetProgramInterfaceiv(program, GL_UNIFORM, GL_ACTIVE_RESOURCES, &count);
+
+    for (GLint i = 0; i < count; ++i) {
+        const GLenum props[] = {GL_TYPE, GL_LOCATION, GL_ARRAY_SIZE, GL_BLOCK_INDEX, GL_NAME_LENGTH};
+        GLint values[5] = {};
+        m_gl->glGetProgramResourceiv(program, GL_UNIFORM, GLuint(i), 5, props, 5, nullptr, values);
+        const auto [glType, location, arraySize, blockIndex, nameLength] =
+            std::tuple(values[0], values[1], values[2], values[3], values[4]);
+        if (blockIndex != -1 || location < 0)
+            continue; // uniform-block members are not individually settable
+
+        QByteArray nameBuffer(nameLength, '\0');
+        m_gl->glGetProgramResourceName(program, GL_UNIFORM, GLuint(i), nameLength, nullptr,
+                                       nameBuffer.data());
+        const QString name = QString::fromUtf8(nameBuffer.constData());
+        if (isBuiltinUniform(name))
+            continue;
+
+        std::optional<ParamType> type;
+        switch (glType) {
+        case GL_FLOAT: type = ParamType::Float; break;
+        case GL_FLOAT_VEC2: type = ParamType::Vec2; break;
+        case GL_FLOAT_VEC3: type = ParamType::Vec3; break;
+        case GL_FLOAT_VEC4: type = ParamType::Vec4; break;
+        case GL_INT: type = ParamType::Int; break;
+        case GL_BOOL: type = ParamType::Bool; break;
+        default: break;
+        }
+        if (!type || arraySize != 1) {
+            diagnostics.append({Severity::Info, std::nullopt, -1, -1,
+                                QStringLiteral("Uniform '%1' is not editable (only float, vec2-4, int "
+                                               "and bool non-array uniforms are supported)")
+                                    .arg(name),
+                                QStringLiteral("parameters")});
+            continue;
+        }
+
+        MaterialParameter param;
+        param.name = name;
+        param.type = *type;
+        if (*type == ParamType::Int || *type == ParamType::Bool) {
+            GLint v = 0;
+            m_gl->glGetUniformiv(program, location, &v);
+            param.defaultValue[0] = float(v);
+        } else {
+            m_gl->glGetUniformfv(program, location, param.defaultValue.data());
+        }
+        param.value = param.defaultValue;
+        parameters.append(param);
+        slotTable.insert(name, {location, *type});
+    }
+
+    std::sort(parameters.begin(), parameters.end(),
+              [](const MaterialParameter& a, const MaterialParameter& b) { return a.name < b.name; });
+    return parameters;
+}
+
+void GLRenderer::setParameter(const QString& name, ParamType type, const ParamValue& value)
+{
+    const auto it = m_parameterSlots.constFind(name);
+    if (!m_gl || !m_program || it == m_parameterSlots.constEnd() || it->type != type)
+        return;
+    const GLuint p = m_program.get();
+    const GLint loc = it->location;
+    switch (type) {
+    case ParamType::Float: m_gl->glProgramUniform1f(p, loc, value[0]); break;
+    case ParamType::Vec2: m_gl->glProgramUniform2f(p, loc, value[0], value[1]); break;
+    case ParamType::Vec3: m_gl->glProgramUniform3f(p, loc, value[0], value[1], value[2]); break;
+    case ParamType::Vec4:
+        m_gl->glProgramUniform4f(p, loc, value[0], value[1], value[2], value[3]);
+        break;
+    case ParamType::Int:
+    case ParamType::Bool: m_gl->glProgramUniform1i(p, loc, GLint(std::lround(value[0]))); break;
+    }
 }
 
 void GLRenderer::setMesh(const MeshData& mesh)

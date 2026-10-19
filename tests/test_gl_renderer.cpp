@@ -176,6 +176,55 @@ TEST_CASE("A link failure keeps the previous program active", "[gl]")
     CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 0, 255));
 }
 
+TEST_CASE("Editable uniforms are introspected with their initial values", "[gl]")
+{
+    RendererScope s;
+    const QString fragment = "#version 450 core\nout vec4 c;\n"
+                             "uniform vec3 uTint = vec3(0.25, 0.5, 1.0);\n"
+                             "uniform float uGain = 2.0;\n"
+                             "uniform bool uFlip = true;\n"
+                             "uniform mat4 uUnsupported;\n"
+                             "uniform float uTime;\n"
+                             "void main() { c = vec4(uTint * uGain * (uFlip ? 1.0 : 0.5), 1.0) "
+                             "+ uUnsupported[0] * 1e-6 + uTime * 0.0; }\n";
+    const auto result = s.renderer.buildProgram({kSolidVertex, fragment});
+    REQUIRE(result.success);
+
+    QHash<QString, MaterialParameter> byName;
+    for (const MaterialParameter& p : result.parameters)
+        byName.insert(p.name, p);
+    CHECK(byName.size() == 3); // uTime is built-in, the mat4 is not editable
+    REQUIRE(byName.contains("uTint"));
+    CHECK(byName["uTint"].type == ParamType::Vec3);
+    CHECK(byName["uTint"].defaultValue == ParamValue{0.25f, 0.5f, 1.0f, 0.0f});
+    CHECK(byName["uGain"].defaultValue[0] == 2.0f);
+    CHECK(byName["uFlip"].type == ParamType::Bool);
+    CHECK(byName["uFlip"].defaultValue[0] == 1.0f);
+
+    bool reportedUnsupported = false;
+    for (const Diagnostic& d : result.diagnostics)
+        reportedUnsupported |= d.severity == Severity::Info && d.message.contains("uUnsupported");
+    CHECK(reportedUnsupported);
+}
+
+TEST_CASE("Setting a parameter changes the rendered output", "[gl]")
+{
+    RendererScope s;
+    const QString fragment = "#version 450 core\nout vec4 c;\n"
+                             "uniform vec3 uTint = vec3(1.0, 0.0, 0.0);\n"
+                             "void main() { c = vec4(uTint, 1.0); }\n";
+    REQUIRE(s.renderer.buildProgram({kSolidVertex, fragment}).success);
+    CHECK(centre(renderOnce(s.renderer)) == qRgb(255, 0, 0));
+
+    s.renderer.setParameter("uTint", ParamType::Vec3, {0.0f, 0.0f, 1.0f, 0.0f});
+    CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 0, 255));
+
+    // Wrong type or unknown name: ignored, no GL error, colour unchanged.
+    s.renderer.setParameter("uTint", ParamType::Float, {1.0f, 1.0f, 1.0f, 1.0f});
+    s.renderer.setParameter("uMissing", ParamType::Vec3, {1.0f, 1.0f, 1.0f, 1.0f});
+    CHECK(centre(renderOnce(s.renderer)) == qRgb(0, 0, 255));
+}
+
 TEST_CASE("Nothing is drawn before any program is built", "[gl]")
 {
     RendererScope s;

@@ -1,6 +1,7 @@
 #include "app/MainWindow.h"
 
 #include "app/DiagnosticsPanel.h"
+#include "app/MaterialPanel.h"
 #include "app/ViewportWidget.h"
 #include "diagnostics/Logging.h"
 #include "editor/CodeEditor.h"
@@ -147,6 +148,22 @@ void MainWindow::createDocks()
         m_editorTabs->setCurrentIndex(tabIndex(stage));
         if (d.line > 0)
             document(stage).editor->goToLine(d.line, d.column);
+    });
+
+    m_materialPanel = new MaterialPanel(this);
+    auto* materialDock = new QDockWidget(tr("Material"), this);
+    materialDock->setObjectName("MaterialDock");
+    materialDock->setWidget(m_materialPanel);
+    addDockWidget(Qt::LeftDockWidgetArea, materialDock);
+    resizeDocks({materialDock}, {380}, Qt::Horizontal);
+    connect(m_materialPanel, &MaterialPanel::parameterChanged, this, [this](const MaterialParameter& p) {
+        m_parameterOverrides.insert(p.name, p);
+        m_viewport->setParameter(p);
+        setSettingsModified(true);
+    });
+    connect(m_materialPanel, &MaterialPanel::parameterReset, this, [this](const QString& name) {
+        m_parameterOverrides.remove(name);
+        setSettingsModified(true);
     });
 
     auto* infoWidget = new QWidget(this);
@@ -317,7 +334,38 @@ void MainWindow::onProgramBuilt(const ProgramBuildResult& result)
 {
     if (!m_compileInFlight)
         return;
+    if (result.success)
+        applyParameters(result.parameters);
     finishCompile(result.success, m_validationDiagnostics + result.diagnostics);
+}
+
+void MainWindow::applyParameters(QList<MaterialParameter> parameters)
+{
+    QHash<QString, ParamHints> hints = parseParameterHints(m_compilingSources.vertex);
+    hints.insert(parseParameterHints(m_compilingSources.fragment));
+    for (MaterialParameter& p : parameters) {
+        p.hints = hints.value(p.name);
+        const auto it = m_parameterOverrides.constFind(p.name);
+        if (it != m_parameterOverrides.constEnd() && it->type == p.type) {
+            p.value = it->value;
+            m_viewport->setParameter(p);
+        }
+    }
+    m_materialPanel->setParameters(parameters);
+}
+
+void MainWindow::setSettingsModified(bool modified)
+{
+    m_settingsModified = modified;
+    updateWindowTitle();
+}
+
+bool MainWindow::hasUnsavedChanges() const
+{
+    return m_settingsModified ||
+           std::any_of(m_documents.begin(), m_documents.end(), [](const StageDocument& d) {
+               return d.editor && d.editor->document()->isModified();
+           });
 }
 
 void MainWindow::finishCompile(bool success, const QList<Diagnostic>& diagnostics)
@@ -476,6 +524,7 @@ bool MainWindow::saveProject(bool saveAs)
     project.autoCompile = m_autoCompileAction->isChecked();
     const OrbitCamera& cam = m_viewport->camera();
     project.camera = {cam.yaw(), cam.pitch(), cam.distance()};
+    project.parameters = m_parameterOverrides;
 
     QString error;
     if (!ProjectIO::save(project, projectPath, &error)) {
@@ -484,7 +533,7 @@ bool MainWindow::saveProject(bool saveAs)
     }
     m_projectPath = projectInfo.absoluteFilePath();
     m_projectName = project.name;
-    updateWindowTitle();
+    setSettingsModified(false);
     statusBar()->showMessage(tr("Saved %1").arg(m_projectPath), 4000);
     return true;
 }
@@ -526,6 +575,8 @@ void MainWindow::applyProjectSettings(const Project& project)
     m_autoCompileAction->setChecked(project.autoCompile);
     m_viewport->camera().set(project.camera.yawDegrees, project.camera.pitchDegrees,
                              project.camera.distance);
+    m_parameterOverrides = project.parameters;
+    setSettingsModified(false);
 }
 
 void MainWindow::newProject()
@@ -595,13 +646,10 @@ void MainWindow::newShader()
 
 bool MainWindow::maybeSaveChanges()
 {
-    const bool modified = std::any_of(m_documents.begin(), m_documents.end(), [](const StageDocument& d) {
-        return d.editor->document()->isModified();
-    });
-    if (!modified)
+    if (!hasUnsavedChanges())
         return true;
     const auto answer = QMessageBox::warning(
-        this, tr("Unsaved changes"), tr("The project has unsaved shader changes."),
+        this, tr("Unsaved changes"), tr("The project has unsaved changes."),
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
     if (answer == QMessageBox::Save)
         return saveProject(false);
@@ -623,10 +671,7 @@ void MainWindow::updateTabTitles()
 
 void MainWindow::updateWindowTitle()
 {
-    const bool modified = std::any_of(m_documents.begin(), m_documents.end(), [](const StageDocument& d) {
-        return d.editor && d.editor->document()->isModified();
-    });
-    setWindowTitle(QStringLiteral("%1%2 — PrismForge").arg(m_projectName, modified ? "*" : ""));
+    setWindowTitle(QStringLiteral("%1%2 — PrismForge").arg(m_projectName, hasUnsavedChanges() ? "*" : ""));
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)

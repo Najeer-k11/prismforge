@@ -23,6 +23,8 @@ public:
     // not ready yet the request is deferred until initializeGL().
     void buildProgram(const ShaderSources& sources);
 
+    void setParameter(const MaterialParameter& parameter);
+
     void setPreviewMesh(PreviewMesh mesh);
     PreviewMesh previewMesh() const { return m_mesh; }
 

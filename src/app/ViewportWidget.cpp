@@ -93,6 +93,16 @@ ProgramBuildResult ViewportWidget::buildNow(const ShaderSources& sources)
     return result;
 }
 
+void ViewportWidget::setParameter(const MaterialParameter& parameter)
+{
+    if (!m_renderer)
+        return;
+    makeCurrent();
+    m_renderer->setParameter(parameter.name, parameter.type, parameter.value);
+    doneCurrent();
+    update();
+}
+
 void ViewportWidget::setPreviewMesh(PreviewMesh mesh)
 {
     m_mesh = mesh;

@@ -25,6 +25,7 @@ QJsonObject toJson(const Project& project)
                 {"distance", project.camera.distance},
             }},
         }},
+        {"parameters", parameterValuesToJson(project.parameters)},
     };
 }
 
@@ -58,6 +59,8 @@ ProjectLoadResult fromJson(const QJsonObject& json)
     p.camera.yawDegrees = float(camera.value("yaw").toDouble(defaults.camera.yawDegrees));
     p.camera.pitchDegrees = float(camera.value("pitch").toDouble(defaults.camera.pitchDegrees));
     p.camera.distance = float(camera.value("distance").toDouble(defaults.camera.distance));
+
+    p.parameters = parameterValuesFromJson(json.value("parameters").toObject());
 
     return {p, {}};
 }

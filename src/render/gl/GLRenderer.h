@@ -70,6 +70,7 @@ public:
 
     ProgramBuildResult buildProgram(const ShaderSources& sources) override;
     bool hasProgram() const override { return bool(m_program); }
+    void setParameter(const QString& name, ParamType type, const ParamValue& value) override;
 
     void setMesh(const MeshData& mesh) override;
     void renderFrame(const FrameParams& params) override;
@@ -83,6 +84,13 @@ private:
         GLint cameraPosition = -1, time = -1, resolution = -1;
     };
 
+    struct ParameterSlot {
+        GLint location = -1;
+        ParamType type = ParamType::Float;
+    };
+
+    QList<MaterialParameter> introspectParameters(GLuint program, QList<Diagnostic>& diagnostics,
+                                                  QHash<QString, ParameterSlot>& slotTable);
     GlName compileStage(ShaderStage stage, const QString& source, QList<Diagnostic>& diagnostics);
     void collectGpuTimings();
 
@@ -92,6 +100,7 @@ private:
 
     GlName m_program;
     UniformLocations m_uniforms;
+    QHash<QString, ParameterSlot> m_parameterSlots;
 
     GlName m_vao, m_vbo, m_ibo;
     GLsizei m_indexCount = 0;

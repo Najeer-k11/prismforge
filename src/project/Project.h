@@ -1,5 +1,8 @@
 #pragma once
 
+#include "material/MaterialParameter.h"
+
+#include <QHash>
 #include <QJsonObject>
 #include <QString>
 
@@ -13,7 +16,7 @@ namespace pf {
 // can be moved or checked into version control as a unit. Shader source is kept
 // in separate files rather than embedded, so diffs stay readable.
 struct Project {
-    static constexpr int kFormatVersion = 1;
+    static constexpr int kFormatVersion = 2;
 
     QString name = QStringLiteral("Untitled");
     QString vertexShaderPath;   // relative to the project directory
@@ -21,6 +24,9 @@ struct Project {
 
     QString previewMesh = QStringLiteral("sphere");
     bool autoCompile = true;
+
+    // Parameter values the user changed from the shader defaults (v2+).
+    QHash<QString, MaterialParameter> parameters;
 
     struct Camera {
         float yawDegrees = 30.0f;

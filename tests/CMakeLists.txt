@@ -6,6 +6,7 @@ add_executable(pf_unit_tests
     test_project.cpp
     test_mesh_camera.cpp
     test_glslang.cpp
+    test_material.cpp
 )
 target_link_libraries(pf_unit_tests PRIVATE pf_core pf_render Catch2::Catch2WithMain)
 target_compile_definitions(pf_unit_tests PRIVATE

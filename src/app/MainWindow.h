@@ -19,6 +19,7 @@ namespace pf {
 
 class CodeEditor;
 class DiagnosticsPanel;
+class MaterialPanel;
 class ViewportWidget;
 
 class MainWindow final : public QMainWindow {
@@ -74,6 +75,10 @@ private:
     void updateTabTitles();
     void applyProjectSettings(const Project& project);
 
+    void applyParameters(QList<MaterialParameter> parameters);
+    void setSettingsModified(bool modified);
+    bool hasUnsavedChanges() const;
+
     void showRendererInfo(const RendererInfo& info);
     void showStats(double frameIntervalMs, const FrameStats& stats);
 
@@ -81,6 +86,9 @@ private:
     QTabWidget* m_editorTabs = nullptr;
     std::array<StageDocument, 2> m_documents;
     DiagnosticsPanel* m_diagnostics = nullptr;
+    MaterialPanel* m_materialPanel = nullptr;
+    QHash<QString, MaterialParameter> m_parameterOverrides; // user-edited values by name
+    bool m_settingsModified = false; // project state outside the shader buffers
     QLabel* m_rendererLabel = nullptr;
     QLabel* m_statsLabel = nullptr;
     QLabel* m_statusCompile = nullptr;

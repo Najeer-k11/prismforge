@@ -18,6 +18,9 @@ Project sampleProject()
     p.previewMesh = "cube";
     p.autoCompile = false;
     p.camera = {45.0f, -10.0f, 6.0f};
+    MaterialParameter tint{"uTint", ParamType::Vec3, {0.25f, 0.5f, 1.0f, 0.0f}, {}, {}};
+    tint.defaultValue = tint.value; // loading sets default == saved value
+    p.parameters.insert(tint.name, tint);
     return p;
 }
 } // namespace
@@ -56,6 +59,16 @@ TEST_CASE("Invalid project files are rejected with a reason", "[project]")
     auto missing = ProjectIO::fromJson(json);
     CHECK_FALSE(missing.project);
     CHECK(missing.error.contains("fragment"));
+}
+
+TEST_CASE("Version 1 projects still load", "[project]")
+{
+    QJsonObject json = ProjectIO::toJson(sampleProject());
+    json["formatVersion"] = 1;
+    json.remove("parameters");
+    const auto loaded = ProjectIO::fromJson(json);
+    REQUIRE(loaded.project);
+    CHECK(loaded.project->parameters.isEmpty());
 }
 
 TEST_CASE("Missing optional fields fall back to defaults", "[project]")
