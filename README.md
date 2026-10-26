@@ -4,6 +4,8 @@ A native desktop environment for writing GPU shaders, previewing them in real
 time, building them with a visual node graph and exporting reusable assets.
 C++20, Qt 6, OpenGL 4.5 core, GLSL.
 
+![PrismForge with the mountains example: material parameters and texture channels on the left, the live preview in the middle, the shader editor on the right](docs/images/app-mountains.jpg)
+
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for modules, the compile
 pipeline, the shader interface, the graph language and file formats.
 
@@ -27,6 +29,16 @@ pipeline, the shader interface, the graph language and file formats.
 | **Texture channels** | Shadertoy-style inputs `uChannel0`–`uChannel3` with per-channel filter (mipmap + anisotropic, linear, nearest), wrap (repeat, clamp, mirror) and Flip Y; `uChannelResolution[4]` and `uMouse`; saved in the project, copied on export, and *Channel N Texture* nodes in the graph |
 | **Built-in textures** | 12 seamless textures bundled in the app: RGBA/gray/blue noise, fractal noise, clouds, Voronoi cells, rock, ground, wood, water normals, UV grid. Or use any image file |
 | **Examples** | `mountains` (flight over eroded terrain), `ocean` (sunset sea with foam), `planet` (textured sphere with clouds and city lights), plus `wallpaper`, `lit-material`, `noise-graph` |
+
+### Examples
+
+Each one is a single fragment shader fed by built-in textures; open the
+`.pfproj` and every parameter is live in the Material panel.
+
+| `examples/mountains` | `examples/ocean` | `examples/planet` |
+|---|---|---|
+| ![Snow-capped mountain range seen from the air, with grassy valleys and haze](docs/images/example-mountains.jpg) | ![Open sea at sunset with rolling swell, foam and a glitter path under the sun](docs/images/example-ocean.jpg) | ![A rotating planet with continents, clouds, polar ice and city lights on the night side](docs/images/example-planet.jpg) |
+| Value-noise terrain from *RGBA Noise* with slope-damped octaves, triplanar *Rock*, *Ground* in the valleys, *Clouds* in the sky. Drag to look around. | Sharp-crested waves with deep-water dispersion, *Water Normals* for ripples, foam broken up by noise, Fresnel sky reflection. | Triplanar continents from *Fractal Noise*, clouds on the sphere's UVs, city lights from *Voronoi Cells*, atmosphere at the limb. |
 
 ## Install a package
 
@@ -107,7 +119,15 @@ them with Ctrl+G. Generated GLSL is shown read-only in the editor.
 
 **Texture channels** (Channels panel): click a thumbnail to choose a built-in
 texture or an image file (PNG, JPEG, WebP, …; paths are saved relative to the
-project). In GLSL:
+project).
+
+![The Channels panel with four bound textures and their filter, wrap and Flip Y settings, next to the texture picker](docs/images/channels-panel.jpg)
+
+The built-in library:
+
+![The twelve built-in textures: RGBA, gray and blue noise, fractal noise, clouds, Voronoi cells, rock, ground, wood, water normals, UV grid](docs/images/builtin-textures.jpg)
+
+In GLSL:
 
 ```glsl
 uniform sampler2D uChannel0;          // ... uChannel3; unbound channels read black

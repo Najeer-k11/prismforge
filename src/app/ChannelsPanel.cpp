@@ -227,6 +227,8 @@ TexturePickerDialog::TexturePickerDialog(int channel, const ChannelBinding& curr
         const QImage image(t.resourcePath());
         auto* item = new QListWidgetItem(QIcon(thumbnail(image, kPickerIconSize)), t.name, m_list);
         item->setData(Qt::UserRole, t.id);
+        // Full cell width for the label (it would otherwise be elided to the icon's width).
+        item->setSizeHint(m_list->gridSize() - QSize(8, 4));
         item->setToolTip(QStringLiteral("<b>%1</b> (%2 × %3)<br>%4")
                              .arg(t.name.toHtmlEscaped())
                              .arg(image.width())

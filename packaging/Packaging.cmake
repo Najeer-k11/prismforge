@@ -30,6 +30,8 @@ foreach(size 16 24 32 48 64 128 256 512)
 endforeach()
 install(FILES ${PROJECT_SOURCE_DIR}/README.md ${PROJECT_SOURCE_DIR}/docs/ARCHITECTURE.md
         DESTINATION ${PRISMFORGE_DOCDIR})
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/docs/images
+        DESTINATION ${PRISMFORGE_DOCDIR}/docs) # README pictures, same relative paths
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/examples/
         DESTINATION ${PRISMFORGE_DOCDIR}/examples)
 
