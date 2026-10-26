@@ -7,15 +7,17 @@ src/
   diagnostics/   Diagnostic model, compiler-log parsers, log capture, categories   ┐
   shader/        ShaderStage/ShaderSources, glslang front-end validation          │
   material/      Material parameters, comment hints, JSON values                  ├─ pf_core (Qt Core, glslang)
-  project/       Project model + JSON (*.pfproj), material exporter               ┘
+  project/       Project model + JSON (*.pfproj), material exporter               │
+  texture/       Channel bindings (uChannel0-3), built-in texture catalogue       ┘
   graph/         Graph model, JSON node library, validation, GLSL codegen            pf_graph (Qt Core)
-  render/        Renderer interface, preview meshes, orbit camera                 ┐  pf_render (Qt Gui/OpenGL)
+  render/        Renderer interface, meshes, camera, channel image loading       ┐  pf_render (Qt Gui/OpenGL)
   render/gl/     OpenGL 4.5 core backend (GLRenderer)                             ┘
   editor/        CodeEditor (gutter, diagnostic marks), GLSL highlighter             pf_editor (Qt Widgets)
   grapheditor/   Node canvas, items, properties panel, undo                          pf_grapheditor (Qt Widgets)
   app/           MainWindow, viewport, panels (diagnostics, material, log), main()   prismforge executable
 packaging/       Install rules, CPack RPM/DEB, desktop file, AppStream, MIME
-resources/       Default shaders, built-in node library, icons
+resources/       Default shaders, built-in node library, textures, icons
+tools/           generate_textures.py: regenerates resources/textures/*.png
 ```
 
 Dependencies only point downwards: `app → grapheditor, editor, render →
@@ -64,8 +66,33 @@ not inject code, so reported line numbers match the editor exactly.
 | uniform   | `uCameraPosition` | vec3    | world space                   |
 | uniform   | `uTime`           | float   | seconds since app start       |
 | uniform   | `uResolution`     | vec2    | framebuffer size in pixels    |
+| uniform   | `uMouse`          | vec4    | xy = drag position, zw = click position (pixels, origin bottom-left); zw negative after release |
+| uniform   | `uChannel0`–`3`   | sampler2D | texture units 0–3           |
+| uniform   | `uChannelResolution` | vec3[4] | channel sizes in texels; z = 1 if bound, all 0 if not |
 
 Uniforms are optional: any the program does not declare are skipped.
+
+## Texture channels
+
+* A `ChannelBinding` (pf_core) names a built-in texture id or an image file and
+  carries a `ChannelSampler`: filter (nearest, linear, mipmap with up to 8×
+  anisotropy), wrap (repeat, clamp, mirror) and Flip Y.
+* `loadChannelImage` (pf_render) decodes the picture to RGBA8888, top row
+  first. `Renderer::setChannel` uploads it with a full mip chain, bottom row
+  first when Flip Y is set (the default, so v = 0 is the bottom of the
+  picture, matching `gl_FragCoord` and Shadertoy). Changing only the filter or
+  wrap of the same image re-parameterises the texture without an upload.
+* Channels belong to the renderer, not the program: they survive recompiles,
+  and each new program gets `uChannelN` set to texture unit N after linking.
+  `ViewportWidget` keeps the images so they are restored if the GL context is
+  recreated. Units are unbound after the draw.
+* Introspection skips channel samplers. A `uChannelN` that is not a
+  `sampler2D` is a warning; other samplers get an info diagnostic, since
+  nothing binds them.
+* Built-in textures are Qt resources (`:/textures/<id>.png`) compiled into
+  pf_render. They are synthesised by `tools/generate_textures.py`; all tile.
+* Export copies each bound texture's original file as
+  `<name>.channel<N>.<ext>` and lists the bindings in `*.material.json`.
 
 ## Timing
 
@@ -119,11 +146,15 @@ only when the type still matches.
 All files are indented JSON with sorted keys; floats are written as the
 shortest decimal that round-trips, so diffs stay small.
 
-`*.pfproj` (format 3; versions 1-2 still load):
+`*.pfproj` (format 4; versions 1-3 still load):
 
 ```json
 {
-    "formatVersion": 3,
+    "channels": {
+        "0": { "filter": "linear", "flipY": true, "texture": "rgba-noise-256", "wrap": "repeat" },
+        "1": { "file": "textures/bricks.png", "filter": "mipmap", "flipY": true, "wrap": "repeat" }
+    },
+    "formatVersion": 4,
     "graph": { "enabled": true, "file": "Demo.pfgraph" },
     "name": "Demo",
     "parameters": { "uTint": { "type": "vec3", "value": [1, 0.5, 0.25] } },

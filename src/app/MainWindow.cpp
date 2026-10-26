@@ -1,5 +1,6 @@
 #include "app/MainWindow.h"
 
+#include "app/ChannelsPanel.h"
 #include "app/DiagnosticsPanel.h"
 #include "app/GpuSelection.h"
 #include "app/LogPanel.h"
@@ -9,6 +10,7 @@
 #include "diagnostics/Logging.h"
 #include "editor/CodeEditor.h"
 #include "project/Exporter.h"
+#include "render/ChannelImage.h"
 #include "graph/GraphCodegen.h"
 #include "grapheditor/GraphEditor.h"
 #include "shader/GlslangValidator.h"
@@ -214,6 +216,17 @@ void MainWindow::createDocks()
         m_parameterOverrides.remove(name);
         setSettingsModified(true);
     });
+
+    m_channelsPanel = new ChannelsPanel(this);
+    auto* channelsDock = new QDockWidget(tr("Channels"), this);
+    channelsDock->setObjectName("ChannelsDock");
+    channelsDock->setWidget(m_channelsPanel);
+    splitDockWidget(materialDock, channelsDock, Qt::Vertical);
+    connect(m_channelsPanel, &ChannelsPanel::channelChanged, this,
+            [this](int index, const ChannelBinding& binding) {
+                applyChannel(index, binding);
+                setSettingsModified(true);
+            });
 
     auto* infoWidget = new QWidget(this);
     auto* infoLayout = new QVBoxLayout(infoWidget);
@@ -502,6 +515,20 @@ void MainWindow::applyParameters(QList<MaterialParameter> parameters)
     m_activeParameters = parameters;
 }
 
+void MainWindow::applyChannel(int index, const ChannelBinding& binding)
+{
+    m_channels[std::size_t(index)] = binding;
+    QString error;
+    const QImage image = loadChannelImage(binding, &error);
+    if (error.isEmpty())
+        m_viewport->setChannel(index, image, binding.sampler, &error);
+    if (!error.isEmpty()) {
+        qCWarning(lcApp).noquote() << QStringLiteral("%1:").arg(channelUniformName(index)) << error;
+        m_viewport->setChannel(index, {}, binding.sampler, nullptr);
+    }
+    m_channelsPanel->setChannel(index, binding, error.isEmpty() ? image : QImage(), error);
+}
+
 void MainWindow::setSettingsModified(bool modified)
 {
     m_settingsModified = modified;
@@ -746,6 +773,25 @@ bool MainWindow::exportMaterial(QString directory, bool interactive)
     request.sources = *m_lastGoodSources;
     request.parameters = m_activeParameters;
     request.graphJson = m_lastGoodGraphJson;
+    for (int i = 0; i < kChannelCount; ++i) {
+        const ChannelBinding& binding = m_channels[std::size_t(i)];
+        if (binding.isEmpty())
+            continue;
+        const BuiltinTexture* builtin = findBuiltinTexture(binding.texture);
+        const QString source = binding.source == ChannelBinding::Source::File ? binding.texture
+                               : builtin                                      ? builtin->resourcePath()
+                                                                              : binding.texture;
+        QFile file(source);
+        if (!file.open(QIODevice::ReadOnly)) {
+            const QString message = tr("Cannot read the %1 texture %2: %3")
+                                        .arg(channelUniformName(i), source, file.errorString());
+            qCWarning(lcApp).noquote() << message;
+            if (interactive)
+                QMessageBox::warning(this, tr("Export"), message);
+            return false;
+        }
+        request.channels.append({i, binding, QFileInfo(source).suffix(), file.readAll()});
+    }
     {
         const QImage preview = m_viewport->grabFramebuffer();
         QBuffer buffer(&request.previewPng);
@@ -897,6 +943,10 @@ bool MainWindow::saveProject(bool saveAs)
     const OrbitCamera& cam = m_viewport->camera();
     project.camera = {cam.yaw(), cam.pitch(), cam.distance()};
     project.parameters = m_parameterOverrides;
+    project.channels = m_channels;
+    for (ChannelBinding& channel : project.channels)
+        if (channel.source == ChannelBinding::Source::File)
+            channel.texture = ProjectIO::toRelativePath(projectPath, channel.texture);
 
     // The graph is always saved, even when not in use, so it isn't lost.
     QString graphPath = m_graphPath;
@@ -920,6 +970,7 @@ bool MainWindow::saveProject(bool saveAs)
         return false;
     }
     m_projectPath = projectInfo.absoluteFilePath();
+    m_channelsPanel->setBrowseDirectory(projectInfo.absolutePath());
     m_projectName = project.name;
     m_graphPath = QFileInfo(graphPath).absoluteFilePath();
     setSettingsModified(false);
@@ -989,6 +1040,14 @@ void MainWindow::applyProjectSettings(const Project& project)
     m_viewport->camera().set(project.camera.yawDegrees, project.camera.pitchDegrees,
                              project.camera.distance);
     m_parameterOverrides = project.parameters;
+    m_channelsPanel->setBrowseDirectory(m_projectPath.isEmpty() ? QDir::homePath()
+                                                                : QFileInfo(m_projectPath).absolutePath());
+    for (int i = 0; i < kChannelCount; ++i) {
+        ChannelBinding channel = project.channels[std::size_t(i)];
+        if (channel.source == ChannelBinding::Source::File)
+            channel.texture = ProjectIO::toAbsolutePath(m_projectPath, channel.texture);
+        applyChannel(i, channel);
+    }
     m_graphModeAction->setChecked(project.useGraph);
     setSettingsModified(false);
 }

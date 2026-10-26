@@ -8,6 +8,7 @@
 
 class QOpenGLDebugLogger;
 
+#include <array>
 #include <memory>
 #include <optional>
 
@@ -26,6 +27,10 @@ public:
     void buildProgram(const ShaderSources& sources);
 
     void setParameter(const MaterialParameter& parameter);
+    // Binds a texture to uChannel<index> (null image: unbind). Kept and
+    // re-applied if the GL context is recreated. Returns false with a reason
+    // if the GPU cannot use the image.
+    bool setChannel(int index, const QImage& image, const ChannelSampler& sampler, QString* error);
 
     void setPreviewMesh(PreviewMesh mesh);
     PreviewMesh previewMesh() const { return m_mesh; }
@@ -57,11 +62,14 @@ protected:
     void paintGL() override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
 
 private:
     void releaseRenderer();
     ProgramBuildResult buildNow(const ShaderSources& sources);
+    FrameParams frameParams(const OrbitCamera& camera, QSize framebufferSize, float time) const;
+    QPointF normalizedPosition(const QPointF& widgetPosition) const;
 
     std::unique_ptr<Renderer> m_renderer;
     QOpenGLDebugLogger* m_debugLogger = nullptr; // only with --gl-debug
@@ -70,8 +78,18 @@ private:
     PreviewMesh m_mesh = PreviewMesh::Sphere;
     bool m_meshDirty = true;
 
+    struct Channel {
+        QImage image;
+        ChannelSampler sampler;
+    };
+    std::array<Channel, kChannelCount> m_channels;
+
     OrbitCamera m_camera;
     QPoint m_lastMouse;
+    // uMouse state in [0, 1] viewport coordinates (y up), so offscreen renders
+    // at any size see the same relative position.
+    QPointF m_mousePosition, m_mouseClick;
+    bool m_mouseDown = false;
 
     QElapsedTimer m_clock;
     qint64 m_lastFrameNs = 0;

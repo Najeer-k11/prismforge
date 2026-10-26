@@ -77,5 +77,9 @@ TEST_CASE("Built-in uniforms are recognised", "[material]")
 {
     CHECK(isBuiltinUniform("uTime"));
     CHECK(isBuiltinUniform("uModel"));
+    CHECK(isBuiltinUniform("uMouse"));
+    CHECK(isBuiltinUniform("uChannel3"));
+    CHECK(isBuiltinUniform("uChannelResolution[0]")); // arrays as named by introspection
     CHECK_FALSE(isBuiltinUniform("uTint"));
+    CHECK_FALSE(isBuiltinUniform("uChannel4"));
 }

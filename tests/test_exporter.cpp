@@ -90,6 +90,43 @@ TEST_CASE("Graph and preview are exported when provided", "[export]")
     CHECK(json["preview"].toString() == "Rusty_Metal_v2.preview.png");
 }
 
+TEST_CASE("Channel textures are copied and described", "[export]")
+{
+    QTemporaryDir dir;
+    ExportRequest request = sampleRequest(dir.path());
+    ExportChannel noise{0, builtinBinding("rgba-noise-256"), "png", QByteArray("\x89PNG noise", 10)};
+    ChannelBinding photo;
+    photo.source = ChannelBinding::Source::File;
+    photo.texture = "/somewhere/Photo.JPG";
+    photo.sampler = {TextureFilter::Mipmap, TextureWrap::Clamp, false};
+    request.channels = {noise, {3, photo, "JPG", QByteArray("jpeg data")}};
+
+    const ExportResult result = Exporter::exportMaterial(request);
+    REQUIRE(result.success);
+    CHECK(result.writtenFiles == Exporter::plannedFiles(request));
+    CHECK(readAll(dir.filePath("Rusty_Metal_v2.channel0.png")) == noise.data);
+    CHECK(readAll(dir.filePath("Rusty_Metal_v2.channel3.jpg")) == "jpeg data");
+
+    const QJsonObject json = QJsonDocument::fromJson(readAll(dir.filePath("Rusty_Metal_v2.material.json"))).object();
+    const QJsonArray channels = json["channels"].toArray();
+    REQUIRE(channels.size() == 2);
+    CHECK(channels[0].toObject()["uniform"] == "uChannel0");
+    CHECK(channels[0].toObject()["file"] == "Rusty_Metal_v2.channel0.png");
+    CHECK(channels[0].toObject()["builtinTexture"] == "rgba-noise-256");
+    CHECK(channels[0].toObject()["filter"] == "linear");
+    CHECK(channels[1].toObject()["index"] == 3);
+    CHECK(channels[1].toObject()["wrap"] == "clamp");
+    CHECK(channels[1].toObject()["flipY"] == false);
+    CHECK_FALSE(channels[1].toObject().contains("builtinTexture"));
+
+    QStringList builtins;
+    for (const QJsonValue& u : json["interface"].toObject()["builtinUniforms"].toArray())
+        builtins << u.toObject()["name"].toString();
+    CHECK(builtins.contains("uChannel3"));
+    CHECK(builtins.contains("uChannelResolution"));
+    CHECK(builtins.contains("uMouse"));
+}
+
 TEST_CASE("Export reports unwritable destinations", "[export]")
 {
     QTemporaryDir dir;

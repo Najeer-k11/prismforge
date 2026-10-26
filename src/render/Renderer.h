@@ -4,12 +4,14 @@
 #include "material/MaterialParameter.h"
 #include "render/Mesh.h"
 #include "shader/ShaderTypes.h"
+#include "texture/TextureChannel.h"
 
 #include <QImage>
 #include <QMatrix4x4>
 #include <QSize>
 #include <QStringList>
 #include <QVector3D>
+#include <QVector4D>
 
 #include <optional>
 
@@ -30,6 +32,10 @@ struct FrameParams {
     QVector3D cameraPosition;
     float timeSeconds = 0.0f;
     QSize framebufferSize; // physical pixels
+    // uMouse, Shadertoy semantics in framebuffer pixels (origin bottom-left):
+    // xy = pointer position while a button is held (kept after release),
+    // zw = where the button went down; z and w are negative once released.
+    QVector4D mouse;
 };
 
 struct FrameStats {
@@ -75,6 +81,11 @@ public:
     // Sets a uniform on the active program. Unknown names or mismatching
     // types are ignored (the shader may have changed underneath the UI).
     virtual void setParameter(const QString& name, ParamType type, const ParamValue& value) = 0;
+
+    // Binds `image` to uChannel<index> (texture unit <index>) for every
+    // program; a null image unbinds the channel. Returns false with a reason
+    // if the image cannot be used on this device (the channel is unchanged).
+    virtual bool setChannel(int index, const QImage& image, const ChannelSampler& sampler, QString* error) = 0;
 
     virtual void setMesh(const MeshData& mesh) = 0;
     // Renders into the currently bound framebuffer.

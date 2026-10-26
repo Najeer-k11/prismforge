@@ -1,0 +1,43 @@
+{
+    "channels": {
+        "0": {
+            "filter": "linear",
+            "flipY": true,
+            "texture": "rgba-noise-256",
+            "wrap": "repeat"
+        },
+        "1": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "water-normal-512",
+            "wrap": "repeat"
+        },
+        "2": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "clouds-512",
+            "wrap": "repeat"
+        }
+    },
+    "formatVersion": 4,
+    "graph": {
+        "enabled": false,
+        "file": ""
+    },
+    "name": "ocean",
+    "parameters": {
+    },
+    "preview": {
+        "autoCompile": true,
+        "camera": {
+            "distance": 3.5,
+            "pitch": 20,
+            "yaw": 30
+        },
+        "mesh": "screen"
+    },
+    "shaders": {
+        "fragment": "ocean.frag",
+        "vertex": "ocean.vert"
+    }
+}

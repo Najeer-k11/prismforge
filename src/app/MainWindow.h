@@ -25,6 +25,7 @@ namespace grapheditor {
 class GraphEditor;
 }
 
+class ChannelsPanel;
 class CodeEditor;
 class DiagnosticsPanel;
 class MaterialPanel;
@@ -92,6 +93,9 @@ private:
     void applyProjectSettings(const Project& project);
 
     void applyParameters(QList<MaterialParameter> parameters);
+    // Loads the binding's image and binds it to uChannel<index> (absolute
+    // file paths). Problems are shown in the Channels panel and logged.
+    void applyChannel(int index, const ChannelBinding& binding);
 
     // Shader graph
     bool exportMaterial(QString directory, bool interactive);
@@ -117,6 +121,8 @@ private:
     DiagnosticsPanel* m_diagnostics = nullptr;
     MaterialPanel* m_materialPanel = nullptr;
     QHash<QString, MaterialParameter> m_parameterOverrides; // user-edited values by name
+    ChannelsPanel* m_channelsPanel = nullptr;
+    ChannelBindings m_channels; // file paths absolute
     bool m_settingsModified = false; // project state outside the shader buffers
     QLabel* m_rendererLabel = nullptr;
     QLabel* m_statsLabel = nullptr;

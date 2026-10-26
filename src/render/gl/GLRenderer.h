@@ -71,6 +71,7 @@ public:
     ProgramBuildResult buildProgram(const ShaderSources& sources) override;
     bool hasProgram() const override { return bool(m_program); }
     void setParameter(const QString& name, ParamType type, const ParamValue& value) override;
+    bool setChannel(int index, const QImage& image, const ChannelSampler& sampler, QString* error) override;
 
     void setMesh(const MeshData& mesh) override;
     void renderFrame(const FrameParams& params) override;
@@ -84,7 +85,8 @@ public:
 private:
     struct UniformLocations {
         GLint model = -1, view = -1, projection = -1, normalMatrix = -1;
-        GLint cameraPosition = -1, time = -1, resolution = -1;
+        GLint cameraPosition = -1, time = -1, resolution = -1, mouse = -1;
+        GLint channelResolution = -1;
     };
 
     struct ParameterSlot {
@@ -108,6 +110,18 @@ private:
 
     GlName m_vao, m_vbo, m_ibo;
     GLsizei m_indexCount = 0;
+
+    // Textures for uChannel0-3, bound to the texture unit of the same index.
+    struct ChannelTexture {
+        GlName texture;
+        QSize size;
+        qint64 imageKey = 0; // QImage::cacheKey() of the uploaded image
+        bool flippedY = false;
+    };
+    void applySampler(GLuint texture, const ChannelSampler& sampler);
+    std::array<ChannelTexture, kChannelCount> m_channels;
+    float m_maxAnisotropy = 1.0f;
+    GLint m_maxTextureSize = 0;
 
     // Ring of GL_TIME_ELAPSED queries so we never stall waiting on the GPU.
     static constexpr int kTimerQueries = 4;

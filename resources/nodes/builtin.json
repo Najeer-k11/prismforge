@@ -1998,6 +1998,170 @@
       ],
       "outputs": [],
       "main": "fragColor = vec4(pow(max({color}, vec3(0.0)), vec3(1.0 / 2.2)), clamp({alpha}, 0.0, 1.0));"
+    },
+    {
+      "id": "texture.channel0",
+      "title": "Channel 0 Texture",
+      "category": "Texture",
+      "description": "Samples the texture bound to channel 0 (uChannel0) in the Channels panel. Unbound channels read black.",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "rgba",
+          "type": "vec4",
+          "expr": "texture(uChannel0, {uv})",
+          "label": "RGBA"
+        },
+        {
+          "id": "rgb",
+          "type": "vec3",
+          "expr": "texture(uChannel0, {uv}).rgb",
+          "label": "RGB"
+        },
+        {
+          "id": "r",
+          "type": "float",
+          "expr": "texture(uChannel0, {uv}).r",
+          "label": "R"
+        },
+        {
+          "id": "a",
+          "type": "float",
+          "expr": "texture(uChannel0, {uv}).a",
+          "label": "A"
+        }
+      ],
+      "functions": "uniform sampler2D uChannel0;"
+    },
+    {
+      "id": "texture.channel1",
+      "title": "Channel 1 Texture",
+      "category": "Texture",
+      "description": "Samples the texture bound to channel 1 (uChannel1) in the Channels panel. Unbound channels read black.",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "rgba",
+          "type": "vec4",
+          "expr": "texture(uChannel1, {uv})",
+          "label": "RGBA"
+        },
+        {
+          "id": "rgb",
+          "type": "vec3",
+          "expr": "texture(uChannel1, {uv}).rgb",
+          "label": "RGB"
+        },
+        {
+          "id": "r",
+          "type": "float",
+          "expr": "texture(uChannel1, {uv}).r",
+          "label": "R"
+        },
+        {
+          "id": "a",
+          "type": "float",
+          "expr": "texture(uChannel1, {uv}).a",
+          "label": "A"
+        }
+      ],
+      "functions": "uniform sampler2D uChannel1;"
+    },
+    {
+      "id": "texture.channel2",
+      "title": "Channel 2 Texture",
+      "category": "Texture",
+      "description": "Samples the texture bound to channel 2 (uChannel2) in the Channels panel. Unbound channels read black.",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "rgba",
+          "type": "vec4",
+          "expr": "texture(uChannel2, {uv})",
+          "label": "RGBA"
+        },
+        {
+          "id": "rgb",
+          "type": "vec3",
+          "expr": "texture(uChannel2, {uv}).rgb",
+          "label": "RGB"
+        },
+        {
+          "id": "r",
+          "type": "float",
+          "expr": "texture(uChannel2, {uv}).r",
+          "label": "R"
+        },
+        {
+          "id": "a",
+          "type": "float",
+          "expr": "texture(uChannel2, {uv}).a",
+          "label": "A"
+        }
+      ],
+      "functions": "uniform sampler2D uChannel2;"
+    },
+    {
+      "id": "texture.channel3",
+      "title": "Channel 3 Texture",
+      "category": "Texture",
+      "description": "Samples the texture bound to channel 3 (uChannel3) in the Channels panel. Unbound channels read black.",
+      "inputs": [
+        {
+          "id": "uv",
+          "type": "vec2",
+          "label": "UV",
+          "defaultExpr": "vUV"
+        }
+      ],
+      "outputs": [
+        {
+          "id": "rgba",
+          "type": "vec4",
+          "expr": "texture(uChannel3, {uv})",
+          "label": "RGBA"
+        },
+        {
+          "id": "rgb",
+          "type": "vec3",
+          "expr": "texture(uChannel3, {uv}).rgb",
+          "label": "RGB"
+        },
+        {
+          "id": "r",
+          "type": "float",
+          "expr": "texture(uChannel3, {uv}).r",
+          "label": "R"
+        },
+        {
+          "id": "a",
+          "type": "float",
+          "expr": "texture(uChannel3, {uv}).a",
+          "label": "A"
+        }
+      ],
+      "functions": "uniform sampler2D uChannel3;"
     }
   ]
 }

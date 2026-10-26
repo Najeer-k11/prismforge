@@ -332,6 +332,177 @@ TEST_CASE("Nothing is drawn before any program is built", "[gl]")
     CHECK(s.renderer().lastFrameStats().drawCalls == 0);
 }
 
+// ---------------------------------------------------------------- channels
+
+namespace {
+
+const char* kScreenVertex = R"(#version 450 core
+layout(location = 0) in vec3 aPosition;
+void main() { gl_Position = vec4(aPosition.xy, 0.0, 1.0); }
+)";
+
+// Fragment shader that shows uChannel0 at the uv in uniform uSample.
+const char* kSampleFragment = R"(#version 450 core
+uniform sampler2D uChannel0;
+uniform vec2 uSample = vec2(0.25, 0.25);
+out vec4 c;
+void main() { c = vec4(texture(uChannel0, uSample).rgb, 1.0); }
+)";
+
+// 2×2, top row first: red green / blue white.
+QImage quadColours()
+{
+    QImage image(2, 2, QImage::Format_RGBA8888);
+    image.setPixelColor(0, 0, Qt::red);
+    image.setPixelColor(1, 0, Qt::green);
+    image.setPixelColor(0, 1, Qt::blue);
+    image.setPixelColor(1, 1, Qt::white);
+    return image;
+}
+
+QRgb sampleAt(Renderer& renderer, float u, float v)
+{
+    renderer.setParameter("uSample", ParamType::Vec2, {u, v, 0.0f, 0.0f});
+    return centre(renderOnce(renderer, PreviewMesh::Screen));
+}
+
+ChannelSampler nearest(bool flipY, TextureWrap wrap = TextureWrap::Repeat)
+{
+    return {TextureFilter::Nearest, wrap, flipY};
+}
+
+} // namespace
+
+TEST_CASE("Channel textures are sampled through uChannel0", "[gl][channels]")
+{
+    RendererScope s;
+    Renderer& r = s.renderer();
+    REQUIRE(r.buildProgram({kScreenVertex, kSampleFragment}).success);
+    QString error;
+
+    // Without flipping, v = 0 is the image's first (top) row.
+    REQUIRE(r.setChannel(0, quadColours(), nearest(false), &error));
+    CHECK(sampleAt(r, 0.25f, 0.25f) == qRgb(255, 0, 0));
+    CHECK(sampleAt(r, 0.75f, 0.25f) == qRgb(0, 255, 0));
+    CHECK(sampleAt(r, 0.25f, 0.75f) == qRgb(0, 0, 255));
+
+    // Flip Y: v = 0 is the picture's bottom row, as with gl_FragCoord.
+    REQUIRE(r.setChannel(0, quadColours(), nearest(true), &error));
+    CHECK(sampleAt(r, 0.25f, 0.25f) == qRgb(0, 0, 255));
+    CHECK(sampleAt(r, 0.75f, 0.75f) == qRgb(0, 255, 0));
+}
+
+TEST_CASE("Channel wrap modes apply outside [0, 1]", "[gl][channels]")
+{
+    RendererScope s;
+    Renderer& r = s.renderer();
+    REQUIRE(r.buildProgram({kScreenVertex, kSampleFragment}).success);
+    QString error;
+    const QImage image = quadColours();
+    REQUIRE(r.setChannel(0, image, nearest(false, TextureWrap::Repeat), &error));
+    CHECK(sampleAt(r, 1.25f, 0.25f) == qRgb(255, 0, 0));
+    // Same image, new settings: updated without re-uploading.
+    REQUIRE(r.setChannel(0, image, nearest(false, TextureWrap::Clamp), &error));
+    CHECK(sampleAt(r, 1.25f, 0.25f) == qRgb(0, 255, 0));
+    REQUIRE(r.setChannel(0, image, nearest(false, TextureWrap::Mirror), &error));
+    CHECK(sampleAt(r, 1.25f, 0.25f) == qRgb(0, 255, 0));
+    CHECK(sampleAt(r, 1.75f, 0.25f) == qRgb(255, 0, 0));
+}
+
+TEST_CASE("Unbinding a channel makes it read black", "[gl][channels]")
+{
+    RendererScope s;
+    Renderer& r = s.renderer();
+    REQUIRE(r.buildProgram({kScreenVertex, kSampleFragment}).success);
+    QString error;
+    REQUIRE(r.setChannel(0, quadColours(), nearest(false), &error));
+    REQUIRE(sampleAt(r, 0.25f, 0.25f) == qRgb(255, 0, 0));
+    REQUIRE(r.setChannel(0, QImage(), nearest(false), &error));
+    CHECK(sampleAt(r, 0.25f, 0.25f) == qRgb(0, 0, 0));
+}
+
+TEST_CASE("Channels survive rebuilding the program", "[gl][channels]")
+{
+    RendererScope s;
+    Renderer& r = s.renderer();
+    QString error;
+    REQUIRE(r.setChannel(0, quadColours(), nearest(false), &error));
+    REQUIRE(r.buildProgram({kScreenVertex, kSampleFragment}).success);
+    CHECK(sampleAt(r, 0.75f, 0.25f) == qRgb(0, 255, 0));
+}
+
+TEST_CASE("uChannelResolution reports texture sizes", "[gl][channels]")
+{
+    RendererScope s;
+    Renderer& r = s.renderer();
+    const QString fragment = "#version 450 core\nuniform vec3 uChannelResolution[4];\nout vec4 c;\n"
+                             "void main() { c = vec4(uChannelResolution[2].xy / 255.0, "
+                             "uChannelResolution[2].z - uChannelResolution[1].x, 1.0); }\n";
+    REQUIRE(r.buildProgram({kScreenVertex, fragment}).success);
+    QString error;
+    REQUIRE(r.setChannel(2, QImage(4, 2, QImage::Format_RGBA8888), nearest(true), &error));
+    CHECK(centre(renderOnce(r, PreviewMesh::Screen)) == qRgb(4, 2, 255)); // z = 1; channel 1 unbound: 0
+}
+
+TEST_CASE("uMouse is passed through", "[gl][channels]")
+{
+    RendererScope s;
+    Renderer& r = s.renderer();
+    const QString fragment = "#version 450 core\nuniform vec4 uMouse;\nout vec4 c;\n"
+                             "void main() { c = vec4(uMouse.xy, -uMouse.zw) / 255.0; c.a = 1.0; }\n";
+    REQUIRE(r.buildProgram({kScreenVertex, fragment}).success);
+    r.setMesh(makeMesh(PreviewMesh::Screen));
+    FrameParams params;
+    params.framebufferSize = g_gl->fbo->size();
+    params.mouse = QVector4D(10.0f, 20.0f, -30.0f, -40.0f); // released
+    g_gl->fbo->bind();
+    r.renderFrame(params);
+    g_gl->fbo->release();
+    CHECK(centre(g_gl->fbo->toImage()) == qRgb(10, 20, 30));
+}
+
+TEST_CASE("Samplers are not parameters; misuse is diagnosed", "[gl][channels]")
+{
+    RendererScope s;
+    const QString fragment = "#version 450 core\n"
+                             "uniform samplerCube uChannel1;\n"
+                             "uniform sampler2D uOther;\n"
+                             "uniform sampler2D uChannel0;\n"
+                             "out vec4 c;\n"
+                             "void main() { c = texture(uChannel1, vec3(1.0)) + texture(uOther, vec2(0.5)) "
+                             "+ texture(uChannel0, vec2(0.5)); }\n";
+    const auto result = s.renderer().buildProgram({kScreenVertex, fragment});
+    REQUIRE(result.success);
+    CHECK(result.parameters.isEmpty());
+    bool cubeWarning = false, otherInfo = false, channel0Reported = false;
+    for (const Diagnostic& d : result.diagnostics) {
+        cubeWarning |= d.severity == Severity::Warning && d.message.contains("uChannel1");
+        otherInfo |= d.severity == Severity::Info && d.message.contains("uOther");
+        channel0Reported |= d.message.contains("'uChannel0'");
+    }
+    CHECK(cubeWarning);
+    CHECK(otherInfo);
+    CHECK_FALSE(channel0Reported);
+}
+
+TEST_CASE("Channel images beyond the GPU's limit are rejected", "[gl][channels]")
+{
+    RendererScope s;
+    Renderer& r = s.renderer();
+    REQUIRE(r.buildProgram({kScreenVertex, kSampleFragment}).success);
+    int maxTexture = 0;
+    for (const auto& [name, value] : r.info().capabilities)
+        if (name == "Max texture size")
+            maxTexture = value.toInt();
+    REQUIRE(maxTexture > 0);
+    QString error;
+    REQUIRE(r.setChannel(0, quadColours(), nearest(false), &error));
+    CHECK_FALSE(r.setChannel(0, QImage(maxTexture + 1, 1, QImage::Format_RGBA8888), nearest(false), &error));
+    CHECK(error.contains("maximum texture size"));
+    CHECK(sampleAt(r, 0.25f, 0.25f) == qRgb(255, 0, 0)); // previous texture kept
+    CHECK_FALSE(r.setChannel(kChannelCount, quadColours(), nearest(false), &error));
+}
+
 int main(int argc, char* argv[])
 {
     // Without a display server, use the offscreen platform; GL may then be

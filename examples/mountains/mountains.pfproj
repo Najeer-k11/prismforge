@@ -1,0 +1,49 @@
+{
+    "channels": {
+        "0": {
+            "filter": "linear",
+            "flipY": true,
+            "texture": "rgba-noise-256",
+            "wrap": "repeat"
+        },
+        "1": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "rock-512",
+            "wrap": "repeat"
+        },
+        "2": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "clouds-512",
+            "wrap": "repeat"
+        },
+        "3": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "ground-512",
+            "wrap": "repeat"
+        }
+    },
+    "formatVersion": 4,
+    "graph": {
+        "enabled": false,
+        "file": ""
+    },
+    "name": "mountains",
+    "parameters": {
+    },
+    "preview": {
+        "autoCompile": true,
+        "camera": {
+            "distance": 3.5,
+            "pitch": 20,
+            "yaw": 30
+        },
+        "mesh": "screen"
+    },
+    "shaders": {
+        "fragment": "mountains.frag",
+        "vertex": "mountains.vert"
+    }
+}

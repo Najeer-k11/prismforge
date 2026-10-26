@@ -1,6 +1,7 @@
 #pragma once
 
 #include "material/MaterialParameter.h"
+#include "texture/TextureChannel.h"
 
 #include <QHash>
 #include <QJsonObject>
@@ -16,7 +17,7 @@ namespace pf {
 // can be moved or checked into version control as a unit. Shader source is kept
 // in separate files rather than embedded, so diffs stay readable.
 struct Project {
-    static constexpr int kFormatVersion = 3;
+    static constexpr int kFormatVersion = 4;
 
     QString name = QStringLiteral("Untitled");
     QString vertexShaderPath;   // relative to the project directory
@@ -33,6 +34,10 @@ struct Project {
     // fragment file is kept untouched either way.
     QString graphPath;
     bool useGraph = false;
+
+    // Textures bound to uChannel0-3 (v4+). File paths are relative to the
+    // project directory.
+    ChannelBindings channels;
 
     struct Camera {
         float yawDegrees = 30.0f;

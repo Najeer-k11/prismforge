@@ -27,6 +27,7 @@ QJsonObject toJson(const Project& project)
         }},
         {"parameters", parameterValuesToJson(project.parameters)},
         {"graph", QJsonObject{{"file", project.graphPath}, {"enabled", project.useGraph}}},
+        {"channels", channelsToJson(project.channels)},
     };
 }
 
@@ -66,6 +67,8 @@ ProjectLoadResult fromJson(const QJsonObject& json)
     const QJsonObject graph = json.value("graph").toObject();
     p.graphPath = graph.value("file").toString();
     p.useGraph = graph.value("enabled").toBool(false) && !p.graphPath.isEmpty();
+
+    p.channels = channelsFromJson(json.value("channels").toObject());
 
     return {p, {}};
 }
