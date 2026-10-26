@@ -23,6 +23,10 @@ Project sampleProject()
     p.parameters.insert(tint.name, tint);
     p.graphPath = "demo.pfgraph";
     p.useGraph = true;
+    p.channels[0] = builtinBinding("rgba-noise-256");
+    p.channels[2].source = ChannelBinding::Source::File;
+    p.channels[2].texture = "textures/rock.png";
+    p.channels[2].sampler.wrap = TextureWrap::Clamp;
     return p;
 }
 } // namespace
@@ -71,6 +75,17 @@ TEST_CASE("Version 1 projects still load", "[project]")
     const auto loaded = ProjectIO::fromJson(json);
     REQUIRE(loaded.project);
     CHECK(loaded.project->parameters.isEmpty());
+}
+
+TEST_CASE("Version 3 projects load without channels", "[project]")
+{
+    QJsonObject json = ProjectIO::toJson(sampleProject());
+    json["formatVersion"] = 3;
+    json.remove("channels");
+    const auto loaded = ProjectIO::fromJson(json);
+    REQUIRE(loaded.project);
+    for (const ChannelBinding& c : loaded.project->channels)
+        CHECK(c.isEmpty());
 }
 
 TEST_CASE("Missing optional fields fall back to defaults", "[project]")

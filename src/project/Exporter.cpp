@@ -24,6 +24,12 @@ QJsonArray components(const ParamValue& v, ParamType type)
     return a;
 }
 
+QString channelSuffix(const ExportChannel& c)
+{
+    return QStringLiteral(".channel%1.%2").arg(c.index).arg(c.fileSuffix.isEmpty() ? QStringLiteral("png")
+                                                                                     : c.fileSuffix.toLower());
+}
+
 bool writeFile(const QString& path, const QByteArray& data, QString* error)
 {
     QSaveFile file(path);
@@ -51,6 +57,8 @@ QStringList plannedFiles(const ExportRequest& r)
         files << filePath(r, ".pfgraph");
     if (!r.previewPng.isEmpty())
         files << filePath(r, ".preview.png");
+    for (const ExportChannel& c : r.channels)
+        files << filePath(r, channelSuffix(c));
     return files;
 }
 
@@ -102,16 +110,34 @@ QByteArray materialJson(const ExportRequest& r)
                 QJsonObject{{"name", "uCameraPosition"}, {"type", "vec3"}},
                 QJsonObject{{"name", "uTime"}, {"type", "float"}},
                 QJsonObject{{"name", "uResolution"}, {"type", "vec2"}},
+                QJsonObject{{"name", "uMouse"}, {"type", "vec4"}},
+                QJsonObject{{"name", "uChannel0"}, {"type", "sampler2D"}},
+                QJsonObject{{"name", "uChannel1"}, {"type", "sampler2D"}},
+                QJsonObject{{"name", "uChannel2"}, {"type", "sampler2D"}},
+                QJsonObject{{"name", "uChannel3"}, {"type", "sampler2D"}},
+                QJsonObject{{"name", "uChannelResolution"}, {"type", "vec3[4]"}},
             }},
         }},
         {"parameters", parameters},
     };
-    if (!r.previewPng.isEmpty()) {
-        QJsonObject withPreview = json;
-        withPreview.insert("preview", base + ".preview.png");
-        return QJsonDocument(withPreview).toJson(QJsonDocument::Indented);
+    QJsonArray channels;
+    for (const ExportChannel& c : r.channels) {
+        QJsonObject o{{"index", c.index},
+                      {"uniform", channelUniformName(c.index)},
+                      {"file", base + channelSuffix(c)},
+                      {"filter", toString(c.binding.sampler.filter)},
+                      {"wrap", toString(c.binding.sampler.wrap)},
+                      {"flipY", c.binding.sampler.flipY}};
+        if (c.binding.source == ChannelBinding::Source::Builtin)
+            o.insert("builtinTexture", c.binding.texture);
+        channels.append(o);
     }
-    return QJsonDocument(json).toJson(QJsonDocument::Indented);
+    QJsonObject document = json;
+    if (!channels.isEmpty())
+        document.insert("channels", channels);
+    if (!r.previewPng.isEmpty())
+        document.insert("preview", base + ".preview.png");
+    return QJsonDocument(document).toJson(QJsonDocument::Indented);
 }
 
 ExportResult exportMaterial(const ExportRequest& r)
@@ -131,6 +157,8 @@ ExportResult exportMaterial(const ExportRequest& r)
             list.append({filePath(r, ".pfgraph"), r.graphJson});
         if (!r.previewPng.isEmpty())
             list.append({filePath(r, ".preview.png"), r.previewPng});
+        for (const ExportChannel& c : r.channels)
+            list.append({filePath(r, channelSuffix(c)), c.data});
         return list;
     }();
     for (const auto& [path, data] : files) {

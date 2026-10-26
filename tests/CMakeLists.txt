@@ -10,10 +10,12 @@ add_executable(pf_unit_tests
     test_log_capture.cpp
     test_graph.cpp
     test_exporter.cpp
+    test_textures.cpp
 )
 target_link_libraries(pf_unit_tests PRIVATE pf_core pf_render pf_graph Catch2::Catch2WithMain)
 target_compile_definitions(pf_unit_tests PRIVATE
     PF_SHADER_DIR="${PROJECT_SOURCE_DIR}/resources/shaders"
+    PF_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/examples"
     $<$<BOOL:${PRISMFORGE_HAVE_GLSLANG}>:PRISMFORGE_HAVE_GLSLANG=1>)
 catch_discover_tests(pf_unit_tests)
 
@@ -28,3 +30,18 @@ find_package(Qt6 REQUIRED COMPONENTS Test)
 add_executable(pf_widget_tests test_graph_editor.cpp)
 target_link_libraries(pf_widget_tests PRIVATE pf_grapheditor Qt6::Test Catch2::Catch2)
 catch_discover_tests(pf_widget_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen LABELS widgets)
+
+# Video encoding; with FFmpeg, clips are encoded and decoded back for checks.
+add_executable(pf_video_tests test_video.cpp)
+target_link_libraries(pf_video_tests PRIVATE pf_media Catch2::Catch2WithMain)
+if(PRISMFORGE_HAVE_FFMPEG)
+    target_compile_definitions(pf_video_tests PRIVATE PRISMFORGE_HAVE_FFMPEG=1)
+    target_link_libraries(pf_video_tests PRIVATE PkgConfig::FFMPEG)
+endif()
+catch_discover_tests(pf_video_tests PROPERTIES LABELS video)
+
+# Channels panel and texture picker (application widgets) on the offscreen platform.
+add_executable(pf_channels_tests test_channels_panel.cpp
+    ${PROJECT_SOURCE_DIR}/src/app/ChannelsPanel.h ${PROJECT_SOURCE_DIR}/src/app/ChannelsPanel.cpp)
+target_link_libraries(pf_channels_tests PRIVATE pf_render Qt6::Widgets Qt6::Test Catch2::Catch2)
+catch_discover_tests(pf_channels_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen LABELS widgets)

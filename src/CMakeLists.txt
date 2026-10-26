@@ -16,6 +16,8 @@ add_library(pf_core STATIC
     material/MaterialParameter.cpp
     project/Exporter.h
     project/Exporter.cpp
+    texture/TextureChannel.h
+    texture/TextureChannel.cpp
 )
 target_include_directories(pf_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(pf_core PUBLIC Qt6::Core)
@@ -50,11 +52,40 @@ add_library(pf_render STATIC
     render/Mesh.cpp
     render/OrbitCamera.h
     render/OrbitCamera.cpp
+    render/FrameSetup.h
+    render/FrameSetup.cpp
+    render/RenderPresets.h
+    render/RenderPresets.cpp
+    render/ChannelImage.h
+    render/ChannelImage.cpp
     render/gl/GLRenderer.h
     render/gl/GLRenderer.cpp
 )
 target_include_directories(pf_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(pf_render PUBLIC pf_core Qt6::Gui Qt6::OpenGL)
+# Built-in channel textures (see tools/generate_textures.py and TextureChannel.cpp).
+set(PRISMFORGE_TEXTURES
+    rgba-noise-256 rgba-noise-64 gray-noise-256 blue-noise-128 fbm-noise-512 clouds-512
+    cells-256 rock-512 ground-512 wood-512 water-normal-512 uv-grid-512)
+list(TRANSFORM PRISMFORGE_TEXTURES PREPEND "${PROJECT_SOURCE_DIR}/resources/textures/")
+list(TRANSFORM PRISMFORGE_TEXTURES APPEND ".png")
+qt_add_resources(pf_render "builtin_textures"
+    PREFIX "/"
+    BASE "${PROJECT_SOURCE_DIR}/resources"
+    FILES ${PRISMFORGE_TEXTURES}
+)
+
+# --- pf_media: video encoding (FFmpeg libraries, optional)
+add_library(pf_media STATIC
+    media/VideoEncoder.h
+    media/VideoEncoder.cpp
+)
+target_include_directories(pf_media PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(pf_media PUBLIC Qt6::Gui)
+if(PRISMFORGE_HAVE_FFMPEG)
+    target_compile_definitions(pf_media PRIVATE PRISMFORGE_HAVE_FFMPEG=1)
+    target_link_libraries(pf_media PRIVATE PkgConfig::FFMPEG)
+endif()
 
 # --- pf_editor: source editing widgets
 add_library(pf_editor STATIC
@@ -93,8 +124,16 @@ qt_add_executable(prismforge
     app/DiagnosticsPanel.cpp
     app/MaterialPanel.h
     app/MaterialPanel.cpp
+    app/ChannelsPanel.h
+    app/ChannelsPanel.cpp
     app/LogPanel.h
     app/LogPanel.cpp
+    app/RenderDialogs.h
+    app/RenderDialogs.cpp
+    app/VideoExportJob.h
+    app/VideoExportJob.cpp
+    app/GpuSelection.h
+    app/GpuSelection.cpp
     app/Theme.h
     app/Theme.cpp
 )
@@ -112,7 +151,7 @@ qt_add_resources(prismforge "builtin_shaders"
         "${PROJECT_SOURCE_DIR}/resources/icons/prismforge-256.png"
 )
 target_link_libraries(prismforge PRIVATE
-    pf_core pf_render pf_editor pf_graph pf_grapheditor
+    pf_core pf_render pf_editor pf_graph pf_grapheditor pf_media
     Qt6::Widgets Qt6::OpenGLWidgets Qt6::Concurrent)
 target_compile_definitions(prismforge PRIVATE
     PRISMFORGE_VERSION="${PROJECT_VERSION}"

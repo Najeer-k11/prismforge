@@ -1,12 +1,15 @@
 #include "app/ViewportWidget.h"
 
 #include "diagnostics/Logging.h"
+#include "render/FrameSetup.h"
 #include "render/gl/GLRenderer.h"
 
 #include <QMouseEvent>
 #include <QOpenGLDebugLogger>
 #include <QOpenGLContext>
 #include <QWheelEvent>
+
+#include <algorithm>
 
 namespace pf {
 
@@ -82,6 +85,13 @@ void ViewportWidget::initializeGL()
     }
     emit rendererReady(m_renderer->info());
 
+    for (int i = 0; i < kChannelCount; ++i) {
+        const Channel& channel = m_channels[std::size_t(i)];
+        QString error;
+        if (!channel.image.isNull() && !m_renderer->setChannel(i, channel.image, channel.sampler, &error))
+            qCWarning(lcRender).noquote() << channelUniformName(i) << error;
+    }
+
     if (m_pendingSources) {
         const ShaderSources sources = *std::exchange(m_pendingSources, std::nullopt);
         emit programBuilt(buildNow(sources));
@@ -116,6 +126,22 @@ ProgramBuildResult ViewportWidget::buildNow(const ShaderSources& sources)
     return result;
 }
 
+bool ViewportWidget::setChannel(int index, const QImage& image, const ChannelSampler& sampler, QString* error)
+{
+    if (index < 0 || index >= kChannelCount)
+        return false;
+    if (m_renderer) {
+        makeCurrent();
+        const bool ok = m_renderer->setChannel(index, image, sampler, error);
+        doneCurrent();
+        if (!ok)
+            return false;
+        update();
+    }
+    m_channels[std::size_t(index)] = {image, sampler};
+    return true;
+}
+
 void ViewportWidget::setParameter(const MaterialParameter& parameter)
 {
     if (!m_renderer)
@@ -124,6 +150,35 @@ void ViewportWidget::setParameter(const MaterialParameter& parameter)
     m_renderer->setParameter(parameter.name, parameter.type, parameter.value);
     doneCurrent();
     update();
+}
+
+bool ViewportWidget::renderImage(QSize size, int samples, float time, QImage* image, QString* error,
+                                 const OrbitCamera* camera)
+{
+    if (!m_renderer || !m_renderer->hasProgram()) {
+        if (error)
+            *error = tr("No working shader to render");
+        return false;
+    }
+    makeCurrent();
+    if (m_meshDirty) {
+        m_renderer->setMesh(makeMesh(m_mesh));
+        m_meshDirty = false;
+    }
+    const bool ok = m_renderer->renderToImage(frameParams(camera ? *camera : m_camera, size, time), samples, image,
+                                              error);
+    doneCurrent();
+    return ok;
+}
+
+QSize ViewportWidget::maxRenderSize() const
+{
+    return m_renderer ? m_renderer->maxRenderSize() : QSize();
+}
+
+int ViewportWidget::maxSamples() const
+{
+    return m_renderer ? m_renderer->maxSamples() : 0;
 }
 
 void ViewportWidget::setPreviewMesh(PreviewMesh mesh)
@@ -152,13 +207,7 @@ void ViewportWidget::paintGL()
     const qint64 now = m_clock.nsecsElapsed();
     const QSize fbSize = size() * devicePixelRatio();
 
-    FrameParams params;
-    params.view = m_camera.viewMatrix();
-    params.projection = m_camera.projectionMatrix(float(fbSize.width()) / std::max(fbSize.height(), 1));
-    params.cameraPosition = m_camera.position();
-    params.timeSeconds = float(double(now) / 1.0e9);
-    params.framebufferSize = fbSize;
-    m_renderer->renderFrame(params);
+    m_renderer->renderFrame(frameParams(m_camera, fbSize, timeSeconds()));
 
     if (m_lastFrameNs != 0) {
         m_intervalAccumMs += double(now - m_lastFrameNs) / 1.0e6;
@@ -174,15 +223,46 @@ void ViewportWidget::paintGL()
     }
 }
 
+FrameParams ViewportWidget::frameParams(const OrbitCamera& camera, QSize framebufferSize, float time) const
+{
+    FrameParams params = makeFrameParams(camera, m_mesh, framebufferSize, time);
+    const float w = float(framebufferSize.width()), h = float(framebufferSize.height());
+    const float sign = m_mouseDown ? 1.0f : -1.0f;
+    params.mouse = QVector4D(float(m_mousePosition.x()) * w, float(m_mousePosition.y()) * h,
+                             sign * float(m_mouseClick.x()) * w, sign * float(m_mouseClick.y()) * h);
+    return params;
+}
+
+QPointF ViewportWidget::normalizedPosition(const QPointF& p) const
+{
+    return QPointF(std::clamp(p.x() / std::max(width(), 1), 0.0, 1.0),
+                   std::clamp(1.0 - p.y() / std::max(height(), 1), 0.0, 1.0));
+}
+
 void ViewportWidget::mousePressEvent(QMouseEvent* event)
 {
     m_lastMouse = event->position().toPoint();
+    if (event->button() == Qt::LeftButton) {
+        m_mouseDown = true;
+        m_mouseClick = m_mousePosition = normalizedPosition(event->position());
+        update();
+    }
+}
+
+void ViewportWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton) {
+        m_mouseDown = false;
+        update();
+    }
 }
 
 void ViewportWidget::mouseMoveEvent(QMouseEvent* event)
 {
     if (!(event->buttons() & (Qt::LeftButton | Qt::MiddleButton)))
         return;
+    if (m_mouseDown)
+        m_mousePosition = normalizedPosition(event->position());
     const QPoint pos = event->position().toPoint();
     const QPoint delta = pos - m_lastMouse;
     m_lastMouse = pos;

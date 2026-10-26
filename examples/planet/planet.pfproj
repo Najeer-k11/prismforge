@@ -1,0 +1,49 @@
+{
+    "channels": {
+        "0": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "fbm-noise-512",
+            "wrap": "repeat"
+        },
+        "1": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "clouds-512",
+            "wrap": "repeat"
+        },
+        "2": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "ground-512",
+            "wrap": "repeat"
+        },
+        "3": {
+            "filter": "mipmap",
+            "flipY": true,
+            "texture": "cells-256",
+            "wrap": "repeat"
+        }
+    },
+    "formatVersion": 4,
+    "graph": {
+        "enabled": false,
+        "file": ""
+    },
+    "name": "planet",
+    "parameters": {
+    },
+    "preview": {
+        "autoCompile": true,
+        "camera": {
+            "distance": 3.2,
+            "pitch": 15,
+            "yaw": 20
+        },
+        "mesh": "sphere"
+    },
+    "shaders": {
+        "fragment": "planet.frag",
+        "vertex": "planet.vert"
+    }
+}

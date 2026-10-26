@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <tuple>
 
 namespace pf::gl {
@@ -24,6 +25,14 @@ void deleteShader(Functions* gl, GLuint n) { gl->glDeleteShader(n); }
 void deleteProgram(Functions* gl, GLuint n) { gl->glDeleteProgram(n); }
 void deleteBuffer(Functions* gl, GLuint n) { gl->glDeleteBuffers(1, &n); }
 void deleteVertexArray(Functions* gl, GLuint n) { gl->glDeleteVertexArrays(1, &n); }
+void deleteFramebuffer(Functions* gl, GLuint n) { gl->glDeleteFramebuffers(1, &n); }
+void deleteRenderbuffer(Functions* gl, GLuint n) { gl->glDeleteRenderbuffers(1, &n); }
+void deleteTexture(Functions* gl, GLuint n) { gl->glDeleteTextures(1, &n); }
+
+// Core in GL 4.6, ARB/EXT_texture_filter_anisotropic before (same values).
+constexpr GLenum kTextureMaxAnisotropy = 0x84FE;
+constexpr GLenum kMaxTextureMaxAnisotropy = 0x84FF;
+constexpr float kAnisotropy = 8.0f;
 
 QString shaderInfoLog(Functions* gl, GLuint shader)
 {
@@ -59,8 +68,11 @@ GLRenderer::~GLRenderer()
     }
     // Deleting names on a different (or no) context would be wrong; leak them.
     qCWarning(lcRender) << "GLRenderer destroyed without its context current; leaking GL objects";
-    for (GlName* name : {&m_program, &m_vao, &m_vbo, &m_ibo})
+    for (GlName* name : {&m_program, &m_vao, &m_vbo, &m_ibo, &m_offscreen.msFbo, &m_offscreen.msColor,
+                         &m_offscreen.msDepth, &m_offscreen.resolveFbo, &m_offscreen.resolveColor})
         name->release();
+    for (ChannelTexture& channel : m_channels)
+        channel.texture.release();
 }
 
 bool GLRenderer::initialize(QString* error)
@@ -94,6 +106,19 @@ bool GLRenderer::initialize(QString* error)
     m_gl->glGetQueryiv(GL_TIME_ELAPSED, GL_QUERY_COUNTER_BITS, &timerBits);
     m_info.gpuTimerQueries = timerBits > 0;
     queryCapabilities(fmt, timerBits);
+
+    GLint maxRenderbuffer = 0, maxTexture = 0, viewport[2] = {};
+    m_gl->glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxRenderbuffer);
+    m_gl->glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTexture);
+    m_gl->glGetIntegerv(GL_MAX_VIEWPORT_DIMS, viewport);
+    m_maxRenderSize = QSize(std::min({maxRenderbuffer, maxTexture, viewport[0]}),
+                            std::min({maxRenderbuffer, maxTexture, viewport[1]}));
+    m_gl->glGetIntegerv(GL_MAX_SAMPLES, &m_maxSamples);
+    m_maxTextureSize = maxTexture;
+    if (std::pair(fmt.majorVersion(), fmt.minorVersion()) >= std::pair(4, 6) ||
+        m_info.extensions.contains(QStringLiteral("GL_ARB_texture_filter_anisotropic")) ||
+        m_info.extensions.contains(QStringLiteral("GL_EXT_texture_filter_anisotropic")))
+        m_gl->glGetFloatv(kMaxTextureMaxAnisotropy, &m_maxAnisotropy);
     if (m_info.gpuTimerQueries)
         m_gl->glCreateQueries(GL_TIME_ELAPSED, kTimerQueries, m_timerQueries.data());
     else
@@ -188,6 +213,8 @@ void GLRenderer::shutdown()
         return;
     m_program.reset();
     m_parameterSlots.clear();
+    m_offscreen = OffscreenTarget{};
+    m_channels = {};
     m_vao.reset();
     m_vbo.reset();
     m_ibo.reset();
@@ -262,6 +289,14 @@ ProgramBuildResult GLRenderer::buildProgram(const ShaderSources& sources)
     m_uniforms.cameraPosition = m_gl->glGetUniformLocation(p, "uCameraPosition");
     m_uniforms.time = m_gl->glGetUniformLocation(p, "uTime");
     m_uniforms.resolution = m_gl->glGetUniformLocation(p, "uResolution");
+    m_uniforms.mouse = m_gl->glGetUniformLocation(p, "uMouse");
+    m_uniforms.channelResolution = m_gl->glGetUniformLocation(p, "uChannelResolution");
+    // Each channel sampler reads the texture unit with its index.
+    for (int i = 0; i < kChannelCount; ++i) {
+        const GLint loc = m_gl->glGetUniformLocation(p, channelUniformName(i).toLatin1().constData());
+        if (loc >= 0)
+            m_gl->glProgramUniform1i(p, loc, i);
+    }
 
     QHash<QString, ParameterSlot> slotTable;
     result.parameters = introspectParameters(p, result.diagnostics, slotTable);
@@ -293,8 +328,28 @@ QList<MaterialParameter> GLRenderer::introspectParameters(GLuint program,
         m_gl->glGetProgramResourceName(program, GL_UNIFORM, GLuint(i), nameLength, nullptr,
                                        nameBuffer.data());
         const QString name = QString::fromUtf8(nameBuffer.constData());
+        const bool sampler = glType == GL_SAMPLER_2D || glType == GL_SAMPLER_3D || glType == GL_SAMPLER_CUBE ||
+                             glType == GL_SAMPLER_2D_ARRAY || glType == GL_SAMPLER_2D_SHADOW;
+        bool channel = false;
+        for (int c = 0; c < kChannelCount; ++c)
+            channel = channel || name == channelUniformName(c);
+        if (channel && glType != GL_SAMPLER_2D) {
+            diagnostics.append({Severity::Warning, ShaderStage::Fragment, -1, -1,
+                                QStringLiteral("'%1' must be declared as sampler2D; channels hold 2D textures")
+                                    .arg(name),
+                                QStringLiteral("channels")});
+            continue;
+        }
         if (isBuiltinUniform(name))
             continue;
+        if (sampler) {
+            diagnostics.append({Severity::Info, std::nullopt, -1, -1,
+                                QStringLiteral("Sampler '%1' has no texture; name it uChannel0-3 and choose a "
+                                               "texture in the Channels panel")
+                                    .arg(name),
+                                QStringLiteral("channels")});
+            continue;
+        }
 
         std::optional<ParamType> type;
         switch (glType) {
@@ -352,6 +407,72 @@ void GLRenderer::setParameter(const QString& name, ParamType type, const ParamVa
     case ParamType::Int:
     case ParamType::Bool: m_gl->glProgramUniform1i(p, loc, GLint(std::lround(value[0]))); break;
     }
+}
+
+void GLRenderer::applySampler(GLuint texture, const ChannelSampler& sampler)
+{
+    const GLint wrap = sampler.wrap == TextureWrap::Clamp    ? GL_CLAMP_TO_EDGE
+                       : sampler.wrap == TextureWrap::Mirror ? GL_MIRRORED_REPEAT
+                                                             : GL_REPEAT;
+    const GLint mag = sampler.filter == TextureFilter::Nearest ? GL_NEAREST : GL_LINEAR;
+    const GLint min = sampler.filter == TextureFilter::Mipmap ? GL_LINEAR_MIPMAP_LINEAR : mag;
+    m_gl->glTextureParameteri(texture, GL_TEXTURE_WRAP_S, wrap);
+    m_gl->glTextureParameteri(texture, GL_TEXTURE_WRAP_T, wrap);
+    m_gl->glTextureParameteri(texture, GL_TEXTURE_MAG_FILTER, mag);
+    m_gl->glTextureParameteri(texture, GL_TEXTURE_MIN_FILTER, min);
+    if (m_maxAnisotropy > 1.0f)
+        m_gl->glTextureParameterf(texture, kTextureMaxAnisotropy,
+                                  sampler.filter == TextureFilter::Mipmap ? std::min(kAnisotropy, m_maxAnisotropy)
+                                                                          : 1.0f);
+}
+
+bool GLRenderer::setChannel(int index, const QImage& image, const ChannelSampler& sampler, QString* error)
+{
+    auto fail = [error](const QString& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    if (!m_gl)
+        return fail(QStringLiteral("Renderer is not initialized"));
+    if (index < 0 || index >= kChannelCount)
+        return fail(QStringLiteral("Channel %1 does not exist").arg(index));
+    ChannelTexture& channel = m_channels[std::size_t(index)];
+    if (image.isNull()) {
+        channel = ChannelTexture{};
+        return true;
+    }
+    if (image.width() > m_maxTextureSize || image.height() > m_maxTextureSize)
+        return fail(QStringLiteral("%1x%2 exceeds this GPU's maximum texture size of %3")
+                        .arg(image.width()).arg(image.height()).arg(m_maxTextureSize));
+
+    // Same picture with other filter/wrap settings: no re-upload needed.
+    if (channel.texture && channel.imageKey == image.cacheKey() && channel.flippedY == sampler.flipY) {
+        applySampler(channel.texture.get(), sampler);
+        return true;
+    }
+
+    QImage rgba = image.convertToFormat(QImage::Format_RGBA8888);
+    const int w = rgba.width(), h = rgba.height();
+    GLuint name = 0;
+    m_gl->glCreateTextures(GL_TEXTURE_2D, 1, &name);
+    GlName texture(m_gl, name, deleteTexture);
+    const int levels = 1 + int(std::floor(std::log2(double(std::max(w, h)))));
+    m_gl->glTextureStorage2D(name, levels, GL_RGBA8, w, h);
+    m_gl->glPixelStorei(GL_UNPACK_ALIGNMENT, 4); // RGBA8888 rows are always 4-byte aligned
+    m_gl->glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    // GL's first row is the bottom of the texture (v = 0).
+    for (int y = 0; y < h; ++y)
+        m_gl->glTextureSubImage2D(name, 0, 0, sampler.flipY ? h - 1 - y : y, w, 1, GL_RGBA, GL_UNSIGNED_BYTE,
+                                  rgba.constScanLine(y));
+    m_gl->glGenerateTextureMipmap(name);
+    applySampler(name, sampler);
+
+    channel.texture = std::move(texture); // previous texture is deleted here
+    channel.size = QSize(w, h);
+    channel.imageKey = image.cacheKey();
+    channel.flippedY = sampler.flipY;
+    return true;
 }
 
 void GLRenderer::setMesh(const MeshData& mesh)
@@ -432,11 +553,29 @@ void GLRenderer::renderFrame(const FrameParams& params)
             m_gl->glProgramUniform2f(p, m_uniforms.resolution,
                                      float(params.framebufferSize.width()),
                                      float(params.framebufferSize.height()));
+        if (m_uniforms.mouse >= 0)
+            m_gl->glProgramUniform4f(p, m_uniforms.mouse, params.mouse.x(), params.mouse.y(), params.mouse.z(),
+                                     params.mouse.w());
+        if (m_uniforms.channelResolution >= 0) {
+            std::array<GLfloat, 3 * kChannelCount> sizes{};
+            for (int i = 0; i < kChannelCount; ++i) {
+                const QSize s = m_channels[std::size_t(i)].size;
+                sizes[std::size_t(3 * i)] = float(s.width());
+                sizes[std::size_t(3 * i + 1)] = float(s.height());
+                sizes[std::size_t(3 * i + 2)] = s.isEmpty() ? 0.0f : 1.0f;
+            }
+            m_gl->glProgramUniform3fv(p, m_uniforms.channelResolution, kChannelCount, sizes.data());
+        }
+        for (int i = 0; i < kChannelCount; ++i)
+            m_gl->glBindTextureUnit(GLuint(i), m_channels[std::size_t(i)].texture.get());
 
         m_gl->glBindVertexArray(m_vao.get());
         m_gl->glDrawElements(GL_TRIANGLES, m_indexCount, GL_UNSIGNED_INT, nullptr);
         m_gl->glBindVertexArray(0);
         m_gl->glUseProgram(0);
+        // Leave the units clean for Qt's compositor.
+        for (int i = 0; i < kChannelCount; ++i)
+            m_gl->glBindTextureUnit(GLuint(i), 0);
         drawCalls = 1;
     }
 
@@ -449,6 +588,109 @@ void GLRenderer::renderFrame(const FrameParams& params)
     m_stats.drawCalls = drawCalls;
     m_stats.triangles = drawCalls ? std::size_t(m_indexCount / 3) : 0;
     m_stats.cpuSubmitMs = double(cpuTimer.nsecsElapsed()) / 1.0e6;
+}
+
+bool GLRenderer::ensureOffscreenTarget(QSize size, int samples, QString* error)
+{
+    if (m_offscreen.msFbo && m_offscreen.size == size && m_offscreen.samples == samples)
+        return true;
+    m_offscreen = OffscreenTarget{};
+
+    auto makeRenderbuffer = [this](GLenum format, int sampleCount, QSize s) {
+        GLuint rb = 0;
+        m_gl->glCreateRenderbuffers(1, &rb);
+        m_gl->glNamedRenderbufferStorageMultisample(rb, sampleCount, format, s.width(), s.height());
+        return GlName(m_gl, rb, deleteRenderbuffer);
+    };
+    auto makeFramebuffer = [this] {
+        GLuint fb = 0;
+        m_gl->glCreateFramebuffers(1, &fb);
+        return GlName(m_gl, fb, deleteFramebuffer);
+    };
+
+    OffscreenTarget t;
+    t.size = size;
+    t.samples = samples;
+    t.msFbo = makeFramebuffer();
+    t.msColor = makeRenderbuffer(GL_RGBA8, samples, size);
+    t.msDepth = makeRenderbuffer(GL_DEPTH_COMPONENT24, samples, size);
+    m_gl->glNamedFramebufferRenderbuffer(t.msFbo.get(), GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, t.msColor.get());
+    m_gl->glNamedFramebufferRenderbuffer(t.msFbo.get(), GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, t.msDepth.get());
+    t.resolveFbo = makeFramebuffer();
+    t.resolveColor = makeRenderbuffer(GL_RGBA8, 0, size);
+    m_gl->glNamedFramebufferRenderbuffer(t.resolveFbo.get(), GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER,
+                                         t.resolveColor.get());
+
+    for (GLuint fbo : {t.msFbo.get(), t.resolveFbo.get()}) {
+        const GLenum status = m_gl->glCheckNamedFramebufferStatus(fbo, GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            if (error)
+                *error = QStringLiteral("Could not create a %1x%2 render target (status 0x%3); "
+                                        "the GPU may be out of memory")
+                             .arg(size.width()).arg(size.height()).arg(status, 0, 16);
+            return false;
+        }
+    }
+    m_offscreen = std::move(t);
+    return true;
+}
+
+bool GLRenderer::renderToImage(const FrameParams& params, int samples, QImage* image, QString* error)
+{
+    const QSize size = params.framebufferSize;
+    if (!m_gl || size.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("Renderer is not initialized");
+        return false;
+    }
+    if (size.width() > m_maxRenderSize.width() || size.height() > m_maxRenderSize.height()) {
+        if (error)
+            *error = QStringLiteral("%1x%2 exceeds this GPU's maximum render size of %3x%4")
+                         .arg(size.width()).arg(size.height())
+                         .arg(m_maxRenderSize.width()).arg(m_maxRenderSize.height());
+        return false;
+    }
+    samples = std::clamp(samples, 0, m_maxSamples);
+    if (!ensureOffscreenTarget(size, samples, error))
+        return false;
+
+    GLint previousDraw = 0, previousRead = 0;
+    m_gl->glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousDraw);
+    m_gl->glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousRead);
+
+    m_gl->glBindFramebuffer(GL_FRAMEBUFFER, m_offscreen.msFbo.get());
+    renderFrame(params);
+    m_gl->glBlitNamedFramebuffer(m_offscreen.msFbo.get(), m_offscreen.resolveFbo.get(), 0, 0, size.width(),
+                                 size.height(), 0, 0, size.width(), size.height(), GL_COLOR_BUFFER_BIT,
+                                 GL_NEAREST);
+
+    // Force opaque alpha on the GPU (shaders may write any alpha): clear only
+    // the alpha channel of the resolved image.
+    const GLfloat opaque[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    m_gl->glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    m_gl->glClearNamedFramebufferfv(m_offscreen.resolveFbo.get(), GL_COLOR, 0, opaque);
+    m_gl->glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    // GL rows are bottom-up; read into a buffer and flip into the image.
+    const qsizetype rowBytes = qsizetype(size.width()) * 4;
+    QByteArray pixels(rowBytes * size.height(), Qt::Uninitialized);
+    m_gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, m_offscreen.resolveFbo.get());
+    m_gl->glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    m_gl->glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+    m_gl->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, GLuint(previousDraw));
+    m_gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, GLuint(previousRead));
+
+    QImage out(size, QImage::Format_RGBX8888);
+    if (out.isNull()) {
+        if (error)
+            *error = QStringLiteral("Out of memory allocating a %1x%2 image").arg(size.width()).arg(size.height());
+        return false;
+    }
+    for (int y = 0; y < size.height(); ++y)
+        std::memcpy(out.scanLine(size.height() - 1 - y), pixels.constData() + rowBytes * y, size_t(rowBytes));
+    *image = std::move(out);
+    return true;
 }
 
 } // namespace pf::gl

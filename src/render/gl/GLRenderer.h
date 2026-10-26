@@ -71,9 +71,13 @@ public:
     ProgramBuildResult buildProgram(const ShaderSources& sources) override;
     bool hasProgram() const override { return bool(m_program); }
     void setParameter(const QString& name, ParamType type, const ParamValue& value) override;
+    bool setChannel(int index, const QImage& image, const ChannelSampler& sampler, QString* error) override;
 
     void setMesh(const MeshData& mesh) override;
     void renderFrame(const FrameParams& params) override;
+    bool renderToImage(const FrameParams& params, int samples, QImage* image, QString* error) override;
+    QSize maxRenderSize() const override { return m_maxRenderSize; }
+    int maxSamples() const override { return m_maxSamples; }
 
     FrameStats lastFrameStats() const override { return m_stats; }
     RendererInfo info() const override { return m_info; }
@@ -81,7 +85,8 @@ public:
 private:
     struct UniformLocations {
         GLint model = -1, view = -1, projection = -1, normalMatrix = -1;
-        GLint cameraPosition = -1, time = -1, resolution = -1;
+        GLint cameraPosition = -1, time = -1, resolution = -1, mouse = -1;
+        GLint channelResolution = -1;
     };
 
     struct ParameterSlot {
@@ -106,6 +111,18 @@ private:
     GlName m_vao, m_vbo, m_ibo;
     GLsizei m_indexCount = 0;
 
+    // Textures for uChannel0-3, bound to the texture unit of the same index.
+    struct ChannelTexture {
+        GlName texture;
+        QSize size;
+        qint64 imageKey = 0; // QImage::cacheKey() of the uploaded image
+        bool flippedY = false;
+    };
+    void applySampler(GLuint texture, const ChannelSampler& sampler);
+    std::array<ChannelTexture, kChannelCount> m_channels;
+    float m_maxAnisotropy = 1.0f;
+    GLint m_maxTextureSize = 0;
+
     // Ring of GL_TIME_ELAPSED queries so we never stall waiting on the GPU.
     static constexpr int kTimerQueries = 4;
     std::array<GLuint, kTimerQueries> m_timerQueries{};
@@ -113,6 +130,19 @@ private:
     int m_timerIndex = 0;
 
     FrameStats m_stats;
+
+    // Offscreen targets for renderToImage(): a multisampled framebuffer that
+    // is resolved into a single-sample one for read-back.
+    struct OffscreenTarget {
+        QSize size;
+        int samples = 0;
+        GlName msFbo, msColor, msDepth;
+        GlName resolveFbo, resolveColor;
+    };
+    bool ensureOffscreenTarget(QSize size, int samples, QString* error);
+    OffscreenTarget m_offscreen;
+    QSize m_maxRenderSize;
+    int m_maxSamples = 0;
 };
 
 } // namespace pf::gl

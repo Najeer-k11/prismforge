@@ -1,7 +1,10 @@
+#include "app/GpuSelection.h"
 #include "app/MainWindow.h"
 #include "app/Theme.h"
 #include "diagnostics/LogCapture.h"
 #include "diagnostics/Logging.h"
+#include "media/VideoEncoder.h"
+#include "render/RenderPresets.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -11,15 +14,26 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
+#include <optional>
 
 int main(int argc, char* argv[])
 {
     pf::LogCapture::install();
 
-    // Parsed before QApplication: the surface format must be set first.
+    // Parsed before QApplication: the surface format and the GPU (driver
+    // environment) must be chosen before Qt initialises its platform.
     const bool glDebug = std::any_of(argv + 1, argv + argc,
                                      [](const char* a) { return std::strcmp(a, "--gl-debug") == 0; });
+    pf::GpuPreference gpu = pf::savedGpuPreference();
+    for (int i = 1; i < argc; ++i) {
+        if (std::strncmp(argv[i], "--gpu=", 6) == 0)
+            gpu = pf::gpuPreferenceFromString(QString::fromLocal8Bit(argv[i] + 6));
+        else if (std::strcmp(argv[i], "--gpu") == 0 && i + 1 < argc)
+            gpu = pf::gpuPreferenceFromString(QString::fromLocal8Bit(argv[i + 1]));
+    }
+    const pf::GpuSetupResult gpuSetup = pf::applyGpuPreference(gpu);
 
     // The context format must be set before the application object exists.
     QSurfaceFormat format;
@@ -44,6 +58,8 @@ int main(int argc, char* argv[])
     for (int size : {16, 32, 48, 64, 128, 256})
         icon.addFile(QStringLiteral(":/icons/prismforge-%1.png").arg(size), QSize(size, size));
     QApplication::setWindowIcon(icon);
+
+    qCInfo(lcApp).noquote() << gpuSetup.description;
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("GPU shader development environment"));
@@ -71,8 +87,63 @@ int main(int argc, char* argv[])
         QStringLiteral("export"),
         QStringLiteral("Export the material to <directory> after the first successful compile, then quit."),
         QStringLiteral("directory"));
-    parser.addOptions({screenshotOption, delayOption, smokeOption, glDebugOption, graphOption, exportOption});
+    const QCommandLineOption renderImageOption(
+        QStringLiteral("render-image"),
+        QStringLiteral("Render a frame to <file> (.png/.jpg/.webp) after the first successful compile, then quit."),
+        QStringLiteral("file"));
+    const QCommandLineOption renderVideoOption(
+        QStringLiteral("render-video"),
+        QStringLiteral("Render a video to <file> (a directory for --format png), then quit."), QStringLiteral("file"));
+    const QCommandLineOption sizeOption(QStringLiteral("size"),
+                                        QStringLiteral("Output size: WxH or 1080p, 2k, 4k, 5k, 8k (default 4k "
+                                                       "for images, 1080p for video)."),
+                                        QStringLiteral("size"));
+    const QCommandLineOption samplesOption(QStringLiteral("samples"), QStringLiteral("MSAA samples (default 8)."),
+                                           QStringLiteral("n"), QStringLiteral("8"));
+    const QCommandLineOption timeOption(QStringLiteral("time"),
+                                        QStringLiteral("uTime of the image, or of the first video frame (default 0)."),
+                                        QStringLiteral("seconds"), QStringLiteral("0"));
+    const QCommandLineOption fpsOption(QStringLiteral("fps"), QStringLiteral("Video frame rate (default 30)."),
+                                       QStringLiteral("fps"), QStringLiteral("30"));
+    const QCommandLineOption durationOption(QStringLiteral("duration"),
+                                            QStringLiteral("Video length in seconds (default 10)."),
+                                            QStringLiteral("seconds"), QStringLiteral("10"));
+    const QCommandLineOption formatOption(QStringLiteral("format"),
+                                          QStringLiteral("Video format: h264, hevc, av1, vp9, prores, png, or an exact "
+                                                         "entry such as av1-cpu (see --list-video-formats). "
+                                                         "Default: first available, GPU encoders preferred."),
+                                          QStringLiteral("format"));
+    const QCommandLineOption qualityOption(QStringLiteral("quality"),
+                                           QStringLiteral("Video quality: high, medium or small (default high)."),
+                                           QStringLiteral("quality"), QStringLiteral("high"));
+    const QCommandLineOption turntableOption(QStringLiteral("turntable"),
+                                             QStringLiteral("Orbit the camera 360° over the video."));
+    const QCommandLineOption gpuOption(QStringLiteral("gpu"),
+                                       QStringLiteral("GPU for rendering on hybrid laptops: auto, nvidia or "
+                                                      "integrated (overrides View > GPU for this run)."),
+                                       QStringLiteral("gpu"));
+    const QCommandLineOption listFormatsOption(QStringLiteral("list-video-formats"),
+                                               QStringLiteral("Print the available video formats and exit."));
+    parser.addOptions({screenshotOption, delayOption, smokeOption, glDebugOption, graphOption, exportOption,
+                       renderImageOption, renderVideoOption, sizeOption, samplesOption, timeOption, fpsOption,
+                       durationOption, formatOption, qualityOption, turntableOption, listFormatsOption,
+                       gpuOption});
     parser.process(app);
+
+    if (parser.isSet(listFormatsOption)) {
+        for (const pf::media::VideoFormatInfo& f : pf::media::videoFormats())
+            std::printf("%-7s %-50s %s\n", qPrintable(f.key), qPrintable(f.label),
+                        f.available ? "available" : qPrintable(QStringLiteral("unavailable: ") + f.reason));
+        return 0;
+    }
+
+    auto fail = [](const QString& message) {
+        std::fprintf(stderr, "prismforge: %s\n", qPrintable(message));
+        return 2;
+    };
+    auto sizeFor = [&](const char* fallback) -> std::optional<QSize> {
+        return pf::parseResolution(parser.isSet(sizeOption) ? parser.value(sizeOption) : QString::fromLatin1(fallback));
+    };
 
     pf::applyTheme(app);
 
@@ -84,6 +155,50 @@ int main(int argc, char* argv[])
         window.enableGraphMode();
     if (parser.isSet(exportOption))
         window.exportAfterFirstBuild(parser.value(exportOption));
+    if (parser.isSet(renderImageOption)) {
+        const auto size = sizeFor("4k");
+        if (!size)
+            return fail(QStringLiteral("invalid --size '%1'").arg(parser.value(sizeOption)));
+        pf::ImageRenderOptions options;
+        options.path = parser.value(renderImageOption);
+        options.size = *size;
+        options.samples = parser.value(samplesOption).toInt();
+        options.useCurrentTime = false;
+        options.time = parser.value(timeOption).toFloat();
+        window.renderImageAfterFirstBuild(options);
+    }
+    if (parser.isSet(renderVideoOption)) {
+        const auto size = sizeFor("1080p");
+        if (!size)
+            return fail(QStringLiteral("invalid --size '%1'").arg(parser.value(sizeOption)));
+        const pf::media::VideoFormatInfo* format = nullptr;
+        if (parser.isSet(formatOption)) {
+            format = pf::media::findVideoFormat(parser.value(formatOption));
+            if (!format)
+                return fail(QStringLiteral("unknown --format '%1'").arg(parser.value(formatOption)));
+        } else {
+            for (const pf::media::VideoFormatInfo& f : pf::media::videoFormats())
+                if (f.available && !format)
+                    format = &f;
+        }
+        if (!format->available)
+            return fail(QStringLiteral("%1 is unavailable: %2").arg(format->label, format->reason));
+        const QString quality = parser.value(qualityOption).toLower();
+        pf::VideoRenderOptions options;
+        options.video.path = parser.value(renderVideoOption);
+        options.video.format = format->format;
+        options.video.encoderKey = format->key;
+        options.video.size = pf::evenSize(*size);
+        options.video.fps = parser.value(fpsOption).toInt();
+        options.video.quality = quality == u"small"    ? pf::media::VideoQuality::Small
+                                : quality == u"medium" ? pf::media::VideoQuality::Medium
+                                                       : pf::media::VideoQuality::High;
+        options.samples = parser.value(samplesOption).toInt();
+        options.duration = parser.value(durationOption).toDouble();
+        options.startTime = parser.value(timeOption).toDouble();
+        options.turntable = parser.isSet(turntableOption);
+        window.renderVideoAfterFirstBuild(options);
+    }
 
     if (parser.isSet(smokeOption)) {
         QFile file(parser.value(smokeOption));

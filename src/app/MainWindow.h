@@ -3,6 +3,7 @@
 #include "diagnostics/Diagnostic.h"
 #include "graph/NodeRegistry.h"
 #include "project/Project.h"
+#include "app/RenderDialogs.h"
 #include "render/Renderer.h"
 
 #include <QFutureWatcher>
@@ -24,6 +25,7 @@ namespace grapheditor {
 class GraphEditor;
 }
 
+class ChannelsPanel;
 class CodeEditor;
 class DiagnosticsPanel;
 class MaterialPanel;
@@ -43,6 +45,10 @@ public:
     // Exports to `directory` after the first successful compile, then quits
     // (exit code 0 on success). Used by the --export command line option.
     void exportAfterFirstBuild(const QString& directory);
+    // Render an image / video after the first successful compile, then quit
+    // (exit code 0 on success). Used by --render-image / --render-video.
+    void renderImageAfterFirstBuild(const ImageRenderOptions& options);
+    void renderVideoAfterFirstBuild(const VideoRenderOptions& options);
 
 signals:
     void compileFinished(bool success);
@@ -87,9 +93,17 @@ private:
     void applyProjectSettings(const Project& project);
 
     void applyParameters(QList<MaterialParameter> parameters);
+    // Loads the binding's image and binds it to uChannel<index> (absolute
+    // file paths). Problems are shown in the Channels panel and logged.
+    void applyChannel(int index, const ChannelBinding& binding);
 
     // Shader graph
     bool exportMaterial(QString directory, bool interactive);
+    void showRenderImageDialog();
+    void showRenderVideoDialog();
+    bool renderImage(const ImageRenderOptions& options, bool interactive);
+    void renderVideo(const VideoRenderOptions& options, bool interactive);
+    QString suggestedOutputBase() const;
 
     bool graphMode() const;
     void setGraphMode(bool enabled);
@@ -107,6 +121,8 @@ private:
     DiagnosticsPanel* m_diagnostics = nullptr;
     MaterialPanel* m_materialPanel = nullptr;
     QHash<QString, MaterialParameter> m_parameterOverrides; // user-edited values by name
+    ChannelsPanel* m_channelsPanel = nullptr;
+    ChannelBindings m_channels; // file paths absolute
     bool m_settingsModified = false; // project state outside the shader buffers
     QLabel* m_rendererLabel = nullptr;
     QLabel* m_statsLabel = nullptr;
@@ -126,6 +142,9 @@ private:
     QByteArray m_lastGoodGraphJson;
     QList<MaterialParameter> m_activeParameters;
     QString m_pendingExportDir;
+    std::optional<ImageRenderOptions> m_pendingImage;
+    std::optional<VideoRenderOptions> m_pendingVideo;
+    bool m_videoRunning = false;
     QLabel* m_statusCompile = nullptr;
     QLabel* m_statusFrame = nullptr;
 

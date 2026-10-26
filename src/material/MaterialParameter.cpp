@@ -43,8 +43,11 @@ std::optional<ParamType> paramTypeFromString(const QString& name)
 bool isBuiltinUniform(const QString& name)
 {
     static const QStringList builtins = {"uModel", "uView", "uProjection", "uNormalMatrix",
-                                         "uCameraPosition", "uTime", "uResolution"};
-    return builtins.contains(name);
+                                         "uCameraPosition", "uTime", "uResolution", "uMouse",
+                                         "uChannel0", "uChannel1", "uChannel2", "uChannel3",
+                                         "uChannelResolution"};
+    // Arrays are reported by introspection as "name[0]".
+    return builtins.contains(name.section(u'[', 0, 0));
 }
 
 QHash<QString, ParamHints> parseParameterHints(const QString& source)

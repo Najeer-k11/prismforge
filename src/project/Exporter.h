@@ -2,6 +2,7 @@
 
 #include "material/MaterialParameter.h"
 #include "shader/ShaderTypes.h"
+#include "texture/TextureChannel.h"
 
 #include <QByteArray>
 #include <QList>
@@ -9,6 +10,14 @@
 #include <QStringList>
 
 namespace pf {
+
+// A texture bound to a channel, copied next to the shaders on export.
+struct ExportChannel {
+    int index = 0;
+    ChannelBinding binding;
+    QString fileSuffix; // of the image data, e.g. "png"
+    QByteArray data;    // the original image file
+};
 
 // Everything needed to reproduce a material outside PrismForge.
 struct ExportRequest {
@@ -18,6 +27,7 @@ struct ExportRequest {
     QList<MaterialParameter> parameters;  // with current values
     QByteArray graphJson;                 // set when the fragment shader came from a graph
     QByteArray previewPng;                // optional
+    QList<ExportChannel> channels;        // bound channels only
 };
 
 struct ExportResult {
@@ -32,7 +42,8 @@ namespace Exporter {
 QStringList plannedFiles(const ExportRequest& request);
 
 // Writes <name>.vert, <name>.frag, <name>.material.json and, when present,
-// <name>.pfgraph and <name>.preview.png. Each file is written atomically.
+// <name>.pfgraph, <name>.preview.png and <name>.channel<N>.<suffix> for each
+// bound channel texture. Each file is written atomically.
 ExportResult exportMaterial(const ExportRequest& request);
 
 // The material description document (also used by tests).

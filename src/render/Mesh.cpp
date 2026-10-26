@@ -11,13 +11,14 @@ QString toString(PreviewMesh mesh)
     case PreviewMesh::Sphere: return QStringLiteral("sphere");
     case PreviewMesh::Plane: return QStringLiteral("plane");
     case PreviewMesh::Cube: return QStringLiteral("cube");
+    case PreviewMesh::Screen: return QStringLiteral("screen");
     }
     return {};
 }
 
 std::optional<PreviewMesh> previewMeshFromString(const QString& name)
 {
-    for (PreviewMesh m : {PreviewMesh::Sphere, PreviewMesh::Plane, PreviewMesh::Cube})
+    for (PreviewMesh m : kAllPreviewMeshes)
         if (name.compare(toString(m), Qt::CaseInsensitive) == 0)
             return m;
     return std::nullopt;
@@ -109,12 +110,26 @@ MeshData makeCube(float size)
     return mesh;
 }
 
+MeshData makeScreenQuad()
+{
+    MeshData mesh;
+    mesh.vertices = {
+        {{-1, -1, 0}, {0, 0, 1}, {0, 0}},
+        {{1, -1, 0}, {0, 0, 1}, {1, 0}},
+        {{1, 1, 0}, {0, 0, 1}, {1, 1}},
+        {{-1, 1, 0}, {0, 0, 1}, {0, 1}},
+    };
+    mesh.indices = {0, 1, 2, 0, 2, 3};
+    return mesh;
+}
+
 MeshData makeMesh(PreviewMesh mesh)
 {
     switch (mesh) {
     case PreviewMesh::Sphere: return makeSphere();
     case PreviewMesh::Plane: return makePlane();
     case PreviewMesh::Cube: return makeCube();
+    case PreviewMesh::Screen: return makeScreenQuad();
     }
     return makeSphere();
 }

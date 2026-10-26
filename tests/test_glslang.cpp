@@ -1,4 +1,7 @@
+#include "project/Project.h"
 #include "shader/GlslangValidator.h"
+
+#include <QDir>
 
 #include <QFile>
 
@@ -57,6 +60,34 @@ TEST_CASE("Errors in different stages are attributed correctly", "[glslang]")
     REQUIRE(hasErrors(diagnostics));
     CHECK(diagnostics.constFirst().stage == ShaderStage::Vertex);
     CHECK(diagnostics.constFirst().line == 2);
+}
+
+TEST_CASE("Example project shaders validate cleanly", "[glslang][examples]")
+{
+    const QDir examples(QStringLiteral(PF_EXAMPLES_DIR));
+    int projects = 0;
+    for (const QString& sub : examples.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const QDir dir(examples.filePath(sub));
+        for (const QString& file : dir.entryList({"*.pfproj"})) {
+            const QString path = dir.filePath(file);
+            INFO(path.toStdString());
+            const ProjectLoadResult loaded = ProjectIO::load(path);
+            REQUIRE(loaded.project);
+            ShaderSources sources;
+            for (auto [stage, relative] : {std::pair{ShaderStage::Vertex, loaded.project->vertexShaderPath},
+                                           std::pair{ShaderStage::Fragment, loaded.project->fragmentShaderPath}}) {
+                QFile f(ProjectIO::toAbsolutePath(path, relative));
+                REQUIRE(f.open(QIODevice::ReadOnly));
+                sources.get(stage) = QString::fromUtf8(f.readAll());
+            }
+            const auto diagnostics = GlslangValidator::validate(sources);
+            for (const Diagnostic& d : diagnostics)
+                UNSCOPED_INFO(d.line << ": " << d.message.toStdString());
+            CHECK_FALSE(hasErrors(diagnostics));
+            ++projects;
+        }
+    }
+    CHECK(projects >= 6);
 }
 
 TEST_CASE("Missing entry point is a link error", "[glslang]")

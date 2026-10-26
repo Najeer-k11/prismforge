@@ -24,7 +24,11 @@ struct MeshData {
     std::size_t triangleCount() const { return indices.size() / 3; }
 };
 
-enum class PreviewMesh { Sphere, Plane, Cube };
+// Screen is a full-viewport quad (for 2D effects and wallpapers): it is drawn
+// with identity matrices, so it ignores the camera.
+enum class PreviewMesh { Sphere, Plane, Cube, Screen };
+inline constexpr PreviewMesh kAllPreviewMeshes[] = {PreviewMesh::Sphere, PreviewMesh::Plane, PreviewMesh::Cube,
+                                                   PreviewMesh::Screen};
 
 QString toString(PreviewMesh mesh);
 std::optional<PreviewMesh> previewMeshFromString(const QString& name);
@@ -33,6 +37,7 @@ std::optional<PreviewMesh> previewMeshFromString(const QString& name);
 MeshData makeSphere(int segments = 64, int rings = 32, float radius = 1.0f);
 MeshData makePlane(float size = 2.0f);  // XZ plane, facing +Y
 MeshData makeCube(float size = 1.6f);   // 24 vertices, hard per-face normals
+MeshData makeScreenQuad();              // [-1, 1] in XY at z = 0, facing +Z
 MeshData makeMesh(PreviewMesh mesh);
 
 } // namespace pf
